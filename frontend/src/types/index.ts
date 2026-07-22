@@ -126,6 +126,13 @@ export interface AiAccuracy {
   accuracy_percent: number;
 }
 
+export interface CategoryAccuracy {
+  fault_type: string;
+  total: number;
+  misclassified: number;
+  accuracy_percent: number;
+}
+
 export interface AuditLogEntry {
   id: string;
   userId: string | null;

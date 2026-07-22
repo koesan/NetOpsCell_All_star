@@ -6,8 +6,10 @@ Arıza olasılığı tahmini, arıza türü sınıflandırma, akıllı saha ekib
 bileşen — hibrit yaklaşım (kural tabanlı + eğitilmiş ML modeli) kullanır.
 
 Detaylı mimari kararlar için bkz. [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — Bölüm 4.4, 5.3, 9.
+Veri seti, model seçimi, eğitim/doğrulama süreci ve gerçek metrikler için bkz.
+[`ML_APPROACH.md`](./ML_APPROACH.md).
 
-## Durum: Faz 3 tamamlandı
+## Durum: Faz 4 tamamlandı
 
 Sentetik veri seti üretildi (240 örnek, 6 sınıf), 3 aday model karşılaştırıldı, model eğitildi ve
 `models/model_v1.joblib` olarak **repoya gömüldü** — `docker compose up` ek bir eğitim adımı
@@ -18,6 +20,10 @@ ve minimum macro-F1 kalite kapısı içerir (regresyon durumunda üretim modelin
 model registry veritabanına senkronize edilir ve `GET /api/v1/ai/model-info` ile sorgulanabilir.
 Identity/Incident'e giden dahili çağrılar exponential backoff+jitter ile retry edilir
 (bkz. `docs/ARCHITECTURE.md` Bölüm 9, 21).
+
+**Faz 4:** Kategori bazlı doğruluk kırılımı artık Süpervizör dashboard'da görsel bir panel olarak
+tüketiliyor (bonus tamamlandı). Kural katmanı ve skorlama formülü için gerçek pytest birim testleri
+eklendi (bkz. Test bölümü). Metodoloji için bkz. [`ML_APPROACH.md`](./ML_APPROACH.md).
 
 ## Endpoint'ler
 
@@ -45,23 +51,33 @@ Gerçek eğitim çıktısı — `models/model_v1_metrics.json` içinde tam detay
 - Tek hata: 1 YAZILIM örneği NORMAL olarak sınıflandı (diğer tüm sınıflar %100 doğru)
 - En belirleyici özellikler: `temperature` (0.192), `packet_loss` (0.154), `packet_loss_ma` (0.147), `signal_delta` (0.113)
 
-## Dinlediği Event'ler (Faz 2'de gerçek RabbitMQ tüketimine geçecek)
+## Dinlediği Event'ler
 
-`team.profile.updated` (şu an: başlangıçta + `/internal/refresh-teams` ile senkron REST pull),
-`incident.status.changed`, `incident.type.changed` (şu an: `/internal/classification-changed` ile senkron REST)
+`team.profile.updated` (RabbitMQ ile otomatik tüketilir, aio-pika consumer; ayrıca başlangıçta +
+`/internal/refresh-teams` ile senkron REST pull yedek yol olarak mevcuttur),
+`incident.type.changed` (RabbitMQ ile otomatik tüketilir, `misclassifications` tablosuna düşer)
 
 ## Yayınladığı Event'ler
 
-`incident.predicted` (Faz 2)
-
-## AI Yaklaşımı
-
-Ayrıntılı model seçimi, sentetik veri üretim mantığı (sınıf bazlı parametrik üreticiler), eğitim/doğrulama
-süreci için [`docs/ARCHITECTURE.md` Bölüm 9](../../docs/ARCHITECTURE.md#9-aiml-bileşeni) bakınız.
+Şu an yok — tahmin sonucu senkron response ile Incident Service'e döner ve `predictions`
+tablosuna doğrudan yazılır. `incident.predicted` olayının ayrıca yayınlanması bilinçli olarak
+kapsam dışı bırakılmıştır (bkz. `docs/ARCHITECTURE.md` Bölüm 22) çünkü şu an hiçbir servis bunu
+dinlemiyor — kullanılmayan bir event yayınlamak gereksiz karmaşıklıktır.
 
 ## Environment Değişkenleri
 
 Bkz. [`.env.example`](./.env.example)
+
+## Test
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+Kural katmanı (`app/ml/rules.py`) ve atama skorlama formülü (`app/scoring.py`) için 22 birim
+test mevcuttur (`tests/test_rules.py`, `tests/test_scoring.py`) — CI'da her push'ta otomatik
+çalışır (bkz. `.github/workflows/ci.yml`).
 
 ## Çalıştırma
 

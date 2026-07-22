@@ -46,7 +46,25 @@ Detaylar için: [Mimari Prensipler](./docs/ARCHITECTURE.md#2-mimari-prensipler-v
 
 ## Proje Durumu
 
-**Faz 0, Faz 1, Faz 2 ve Faz 3 tamamlandı ve uçtan uca test edildi:**
+**Faz 0, Faz 1, Faz 2, Faz 3 ve Faz 4 tamamlandı ve uçtan uca test edildi:**
+
+- ✅ **Gerçek zamanlı bildirimler (Faz 4, bonus):** Gateway'de Socket.IO relay'i — JWT ile
+  kimlik doğrulanmış her istemci `user:<id>` odasına yerleşir; `incident.assigned` (atanan
+  teknisyene toast + anlık liste yenileme) ve `badge.earned` (rozet toast'ı + profil/liderlik
+  cache tazeleme) olayları RabbitMQ'dan tüketilip gerçek zamanlı iletilir. İş-kritik değildir
+  (best-effort); Gateway yeniden başlarsa yalnızca bir toast kaçırılır, veri kaybı olmaz.
+- ✅ **Kategori bazlı AI doğruluk paneli (Faz 4, bonus):** `GET /api/v1/ai/accuracy/by-category`
+  artık Süpervizör dashboard'da her arıza türü için ayrı doğruluk oranı gösteren bir tabloya
+  bağlandı.
+- ✅ **CI/CD pipeline (Faz 4, bonus):** GitHub Actions (`.github/workflows/ci.yml`) her push/PR'da
+  4 Node servisinin build+test'ini, frontend build'ini, AI servisi pytest'lerini ve tüm 7 Docker
+  imajının derlenebilirliğini otomatik doğrular.
+- ✅ **Test kapsamı tamamlandı (Faz 4):** Daha önce placeholder olan Identity (JWT imzalama/
+  doğrulama, RS256, `alg:none`/issuer-karışıklığı savunması) ve Incident (durum makinesi, 14 test)
+  birim testleri gerçek Jest testleriyle değiştirildi; AI servisine kural katmanı ve atama
+  skorlama formülü için 22 pytest testi eklendi (`services/ai-service/tests/`).
+- ✅ **AI yaklaşım dokümanı (Faz 4):** [`services/ai-service/ML_APPROACH.md`](./services/ai-service/ML_APPROACH.md)
+  — veri seti üretim mantığı, model seçim metodolojisi, gerçek çapraz doğrulama/test metrikleri.
 
 - ✅ **Secret yönetimi (Faz 3):** Tüm şifreler/anahtarlar `scripts/generate-secrets.sh` ile üretilip
   Docker Compose `secrets:` mekanizmasıyla mount edilir; repoda düz metin sır yoktur (bkz. Kurulum).
@@ -98,8 +116,9 @@ Detaylar için: [Mimari Prensipler](./docs/ARCHITECTURE.md#2-mimari-prensipler-v
 - ✅ **Bağımsızlık testi doğrulandı:** AI Service ve Gamification Service ayrı ayrı `docker stop` ile
   durdurulup sistemin geri kalanının çalışmaya devam ettiği kanıtlandı
 
-**Sırada (opsiyonel bonus):** WebSocket/SSE ile gerçek zamanlı rozet bildirimleri, CI/CD pipeline,
-kategori bazlı AI doğruluk kırılımı paneli (bkz. yol haritası Bölüm 15, Faz 2 sonrası notlar).
+Tüm case bonus kalemleri (kendi eğitilmiş model, RabbitMQ, kategori bazlı AI doğruluk, WebSocket,
+CI/CD) tamamlanmıştır. Kapsam dışı bırakılan üretim-seviyesi konular (mTLS, Kubernetes, Vault,
+Kafka, Prometheus/Alertmanager) ve gerekçeleri için bkz. `docs/ARCHITECTURE.md` Bölüm 22.
 
 ## Kurulum ve Çalıştırma
 
@@ -159,7 +178,8 @@ curl -X POST http://localhost:8000/internal/refresh-teams -H "x-internal-key: $(
 - [`gateway/README.md`](./gateway/README.md)
 - [`services/identity-service/README.md`](./services/identity-service/README.md)
 - [`services/incident-service/README.md`](./services/incident-service/README.md)
-- [`services/ai-service/README.md`](./services/ai-service/README.md)
+- [`services/ai-service/README.md`](./services/ai-service/README.md) ·
+  [`ML_APPROACH.md`](./services/ai-service/ML_APPROACH.md) (veri seti, model seçimi, gerçek metrikler)
 - [`services/gamification-service/README.md`](./services/gamification-service/README.md)
 - [`frontend/README.md`](./frontend/README.md)
 

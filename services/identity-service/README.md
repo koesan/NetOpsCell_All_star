@@ -7,7 +7,7 @@ rol/yetki matrisi, hesap kilitleme, merkezi audit log.
 
 Detaylı mimari kararlar için bkz. [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — Bölüm 4.2, 5.1, 8.
 
-## Durum: Faz 3 tamamlandı
+## Durum: Faz 4 tamamlandı
 
 Tüm auth akışları (OTP kayıt/giriş, personel email+şifre girişi, RS256 JWT + refresh rotation +
 reuse-detection, hesap kilitleme, rol/yetki matrisi guard'ları, merkezi audit log) uçtan uca test
@@ -17,6 +17,10 @@ edildi. Demo kullanıcıları için `npm run seed` (bkz. `src/seed.ts`).
 bkz. `docs/ARCHITECTURE.md` Bölüm 19). `register()` uç noktası, daha önce kayıtlı (ACTIVE)
 müşterilerin de yeni bir OTP isteyip tekrar giriş yapabilmesini destekler (Faz 3 doğrulamasında
 bulunan bir hatanın düzeltmesi — bkz. Bölüm 21.2).
+
+**Faz 4:** RS256 imzalama/doğrulama için gerçek birim testler eklendi (`src/auth/jwt.util.spec.ts`)
+— geçerli token, süresi dolmuş token, `alg:none` saldırısı, farklı issuer ile token karışıklığı ve
+bozulmuş imza senaryoları test edilir (`npm test`, CI'da otomatik çalışır).
 
 ## Endpoint'ler (bkz. ARCHITECTURE.md Bölüm 6.1)
 

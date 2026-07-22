@@ -7,7 +7,7 @@ import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States
 import { FaultTypeBadge, PriorityBadge } from "../../components/ui/Badge";
 import { IncidentMap } from "../../components/map/IncidentMap";
 import { useIncidents } from "../shared/incidentHooks";
-import { useAiAccuracy, useDashboardSummary } from "./dashboardHooks";
+import { useAiAccuracy, useAiAccuracyByCategory, useDashboardSummary } from "./dashboardHooks";
 import type { FaultType, Priority } from "../../types";
 
 const FAULT_COLORS: Record<FaultType, string> = {
@@ -38,6 +38,7 @@ const FAULT_LABELS: Record<FaultType, string> = {
 export function DashboardPage() {
   const { data: summary, isLoading, isError, refetch } = useDashboardSummary();
   const { data: accuracy } = useAiAccuracy();
+  const { data: categoryAccuracy } = useAiAccuracyByCategory();
   const { data: incidents } = useIncidents("dashboard-incidents");
 
   if (isLoading) return <LoadingState label="Dashboard yükleniyor..." />;
@@ -134,6 +135,42 @@ export function DashboardPage() {
           </CardBody>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Kategori Bazlı AI Doğruluğu</CardTitle>
+        </CardHeader>
+        <CardBody className="p-0">
+          {!categoryAccuracy || categoryAccuracy.every((c) => c.total === 0) ? (
+            <EmptyState title="Henüz veri yok" description="Tahmin geldikçe arıza türü bazlı doğruluk burada görünecek." />
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-navy-100 text-left text-xs text-navy-400">
+                  <th className="px-5 py-2 font-medium">Arıza Türü</th>
+                  <th className="px-5 py-2 font-medium">Tahmin Sayısı</th>
+                  <th className="px-5 py-2 font-medium">Yanlış Sınıflandırma</th>
+                  <th className="px-5 py-2 font-medium">Doğruluk</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categoryAccuracy.map((row) => (
+                  <tr key={row.fault_type} className="border-b border-navy-50 last:border-0">
+                    <td className="px-5 py-2.5">
+                      <FaultTypeBadge faultType={row.fault_type as FaultType} />
+                    </td>
+                    <td className="px-5 py-2.5">{row.total}</td>
+                    <td className="px-5 py-2.5">{row.misclassified}</td>
+                    <td className="px-5 py-2.5 font-semibold text-navy-800">
+                      {row.total === 0 ? "—" : `%${row.accuracy_percent}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardBody>
+      </Card>
 
       <Card className="mt-6 overflow-hidden p-0">
         <CardHeader className="px-5 pt-5">

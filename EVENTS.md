@@ -10,11 +10,18 @@
 > RabbitMQ kuyruğundaki event otomatik işlenmiştir). Gamification Service'te `POST
 > /internal/simulate-event` hâlâ manuel test amaçlı kullanılabilir ama artık birincil yol değil.
 
+> **Faz 4 (bonus):** Gateway, `netopscell.events` exchange'ine ek olarak kendi geçici (exclusive,
+> auto-delete) kuyruğuyla bağlanıp `incident.assigned` ve `badge.earned` olaylarını dinler ve
+> Socket.IO üzerinden ilgili kullanıcıya (`user:<id>` odası) gerçek zamanlı iletir. Bu tüketici
+> **iş-kritik değildir** — durable kuyruklardaki asıl iş mantığını (Gamification puanlama,
+> AI cache güncelleme vb.) etkilemez; Gateway yeniden başlarsa kaçırılan bir bildirim yalnızca
+> o anki toast'ın gösterilmemesi anlamına gelir, veri kaybı olmaz.
+
 | Event | Yayıncı | Dinleyici(ler) | Durum |
 |---|---|---|---|
 | `incident.created` | Incident Service | — (audit) | ✅ RabbitMQ'ya yayınlanıyor |
 | `incident.status.changed` | Incident Service | — | ✅ RabbitMQ'ya yayınlanıyor |
-| `incident.assigned` | Incident Service | — (bonus: WebSocket) | ✅ RabbitMQ'ya yayınlanıyor |
+| `incident.assigned` | Incident Service | Gateway (WebSocket relay → atanan teknisyen) | ✅ RabbitMQ'ya yayınlanıyor; **Faz 4:** Gateway'in Socket.IO relay'i (`gateway/src/websocket.js`) ile `user:<team_id>` odasına `incident:assigned` olarak iletiliyor, frontend toast + anlık liste yenileme yapıyor |
 | `incident.type.changed` | Incident Service | AI Service (`misclassifications`) | ✅ RabbitMQ ile tüketiliyor (aio-pika consumer, `rabbitmq_consumer.py`) — senkron REST kaldırıldı |
 | `incident.resolved` | Incident Service | Gamification Service | ✅ RabbitMQ ile otomatik tüketiliyor (`gamification-consumer.service.ts`) |
 | `incident.resolution.rated` | Incident Service | Gamification Service | ✅ RabbitMQ ile otomatik tüketiliyor |
@@ -23,7 +30,7 @@
 | `incident.parts.supplied` | Incident Service | — (audit) | Bonus/gelecek iyileştirme (durum geçişi `/status` ile yapılıyor, ayrı event yok) |
 | `incident.predicted` | AI Service | — (audit) | Bonus/gelecek iyileştirme (şimdilik `predictions` tablosuna doğrudan yazılıyor) |
 | `team.profile.updated` | Identity Service | AI Service (`team_cache`) | ✅ RabbitMQ ile otomatik tüketiliyor (aio-pika); ayrıca başlangıçta + `/internal/refresh-teams` ile manuel senkron REST pull de mevcut (yedek yol) |
-| `badge.earned` | Gamification Service | — (bonus: WebSocket → Frontend toast) | ✅ RabbitMQ'ya yayınlanıyor; frontend tüketimi (toast) bonus kapsamında (WebSocket gerektirir) |
+| `badge.earned` | Gamification Service | Gateway (WebSocket relay → rozeti kazanan personel) | ✅ RabbitMQ'ya yayınlanıyor; **Faz 4:** Gateway'in Socket.IO relay'i ile `user:<user_id>` odasına `badge:earned` olarak iletiliyor, frontend toast gösterip profil/liderlik tablosu cache'ini anında tazeliyor |
 | `audit.log` | Tüm servisler | Identity Service (merkezi toplama) | ✅ RabbitMQ ile otomatik tüketiliyor (`audit-consumer.service.ts`); Identity kendi auth olaylarını doğrudan kendi `audit_logs` tablosuna yazıyor |
 
 ## Payload Şemaları

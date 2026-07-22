@@ -7,7 +7,7 @@ standart hata zarfı.
 
 Detaylı mimari kararlar için bkz. [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — Bölüm 4.1.
 
-## Durum: Faz 3 tamamlandı
+## Durum: Faz 4 tamamlandı
 
 Routing + rate limiting + health-check + **JWT ön-doğrulama** aktif (`src/jwt-auth.middleware.js`).
 Public key Docker secret'tan okunur (`/run/secrets/jwt_public_key`) ile RS256 doğrulama yapılır;
@@ -20,6 +20,12 @@ rate limit'ler (register/otp-verify/refresh). Proxy hata yakalama `http-proxy-mi
 `on: { error, proxyReq }` API'sine taşındı — hedef servis erişilemez olduğunda artık her zaman
 standart `{success:false, error:{code:"SERVICE_UNAVAILABLE"}}` JSON zarfı döner (v1/v2 tarzı
 `onError` seçeneği v3'te sessizce yok sayılıyordu — bkz. `docs/ARCHITECTURE.md` Bölüm 21.2).
+
+**Faz 4 (bonus):** Aynı HTTP server üzerinde bir Socket.IO relay'i çalışır (`src/websocket.js`).
+JWT ile kimlik doğrulanan her istemci `user:<id>` odasına yerleştirilir; RabbitMQ'dan
+`incident.assigned` ve `badge.earned` olayları tüketilip hedef kullanıcıya gerçek zamanlı iletilir.
+Bu tüketici iş-kritik değildir (best-effort, geçici/exclusive kuyruk) — durable kuyruklardaki asıl
+iş mantığını etkilemez (bkz. `EVENTS.md`).
 
 ## Routing Tablosu
 

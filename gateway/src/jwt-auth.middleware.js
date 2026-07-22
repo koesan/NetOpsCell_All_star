@@ -57,4 +57,4 @@ function jwtAuthMiddleware(req, res, next) {
   }
 }
 
-module.exports = { jwtAuthMiddleware };
+module.exports = { jwtAuthMiddleware, publicKey, JWT_ISSUER, JWT_AUDIENCE };

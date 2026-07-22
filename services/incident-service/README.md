@@ -7,7 +7,7 @@ SLA takibi, saha–NOC mesajlaşması, çözüm değerlendirmesi.
 
 Detaylı mimari kararlar için bkz. [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — Bölüm 4.3, 5.2, 7, 9.
 
-## Durum: Faz 3 tamamlandı
+## Durum: Faz 4 tamamlandı
 
 State machine, SLA hesaplama + arka plan cron (aşım tespiti + 24s otomatik kapama), AI Service
 entegrasyonu (senkron `/predict` + `/assign`, **Circuit Breaker** ile sarılı, fallback davranışı),
@@ -17,6 +17,11 @@ tekrar eden arıza tespiti, dashboard agregasyonları uçtan uca test edildi (bk
 **Faz 3:** Saha–NOC mesajlaşması PostgreSQL'den **MongoDB**'ye taşındı (okunma bilgisi, mesaj
 durumu, anti-spam hız sınırlama dahil — bkz. `docs/ARCHITECTURE.md` Bölüm 20). Incident→AI çağrısı
 `opossum` Circuit Breaker ile korunur.
+
+**Faz 4:** Durum makinesi (`state-machine.ts`) için gerçek birim testler eklendi
+(`src/incidents/state-machine.spec.ts`, 14 test — her yasal geçiş, rol ihlali, adım atlama ve
+terminal durum davranışı; `npm test`, CI'da otomatik çalışır). `incident.assigned` olayı artık
+Gateway üzerinden atanan teknisyene gerçek zamanlı bildirim olarak da iletiliyor.
 
 ## Endpoint'ler (bkz. ARCHITECTURE.md Bölüm 6.1)
 

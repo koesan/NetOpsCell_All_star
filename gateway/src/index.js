@@ -1,3 +1,4 @@
+const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -6,6 +7,7 @@ const rateLimit = require("express-rate-limit");
 const { createProxyMiddleware } = require("http-proxy-middleware");
 const { randomUUID } = require("crypto");
 const { jwtAuthMiddleware } = require("./jwt-auth.middleware");
+const { attachWebsocket } = require("./websocket");
 
 const PORT = process.env.PORT || 8080;
 
@@ -134,7 +136,13 @@ app.use((_req, res) => {
   res.status(404).json({ success: false, data: null, error: { code: "NOT_FOUND", message: "Route bulunamadi." } });
 });
 
-app.listen(PORT, () => {
+// Faz 4 (bonus): Socket.IO ayni HTTP server uzerinde calisir, tek port/tek giris noktasi
+// ilkesi korunur. Gercek zamanli bildirimler (incident.assigned, badge.earned) icin -
+// bkz. src/websocket.js.
+const httpServer = http.createServer(app);
+attachWebsocket(httpServer, ALLOWED_ORIGINS);
+
+httpServer.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`[api-gateway] listening on port ${PORT}`);
 });

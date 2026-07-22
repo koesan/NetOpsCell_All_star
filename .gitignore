@@ -2,12 +2,14 @@
 node_modules/
 dist/
 npm-debug.log*
+*.tsbuildinfo
 
 # Python
 __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
 
 # Env
 .env

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api";
-import type { AiAccuracy, DashboardSummary } from "../../types";
+import type { AiAccuracy, CategoryAccuracy, DashboardSummary } from "../../types";
 
 export function useDashboardSummary() {
   return useQuery({
@@ -19,6 +19,17 @@ export function useAiAccuracy() {
     queryFn: async () => {
       // Gateway uzerinden gider (JWT dogrulamasi + tek giris noktasi ilkesi korunur)
       const response = await api.get<{ data: AiAccuracy }>("/api/v1/ai/accuracy");
+      return response.data.data;
+    },
+    retry: 1,
+  });
+}
+
+export function useAiAccuracyByCategory() {
+  return useQuery({
+    queryKey: ["ai-accuracy-by-category"],
+    queryFn: async () => {
+      const response = await api.get<{ data: CategoryAccuracy[] }>("/api/v1/ai/accuracy/by-category");
       return response.data.data;
     },
     retry: 1,

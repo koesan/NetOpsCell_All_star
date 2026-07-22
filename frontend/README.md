@@ -6,10 +6,16 @@ animasyonları, Recharts grafikleri, React Leaflet harita.
 
 Detaylı ekran haritası ve UI/UX kararları için bkz. [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — Bölüm 13.
 
-## Durum: Faz 2 tamamlandı
+## Durum: Faz 4 tamamlandı
 
 Tüm rol bazlı ekranlar gerçek API'lara bağlı ve gerçek tarayıcıda (Playwright, headless Chromium)
 test edildi — konsol hatası yok.
+
+**Faz 4:** Gateway'in Socket.IO relay'ine bağlanıp gerçek zamanlı bildirim gösteren
+`useRealtimeNotifications` hook'u eklendi (`incident:assigned` → teknisyene toast + anlık liste
+yenileme, `badge:earned` → rozet toast'ı + profil/liderlik cache'i tazeleme, bkz.
+`src/hooks/useRealtimeNotifications.ts`). Süpervizör dashboard'a kategori bazlı AI doğruluk
+tablosu eklendi (`src/features/supervisor/DashboardPage.tsx`).
 
 | Rol | Ekranlar |
 |---|---|
