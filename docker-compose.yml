@@ -1,0 +1,467 @@
+name: netopscell
+
+# ---------------------------------------------------------------------------
+# Faz 3 - Ag mikro-segmentasyonu: her servis sadece ihtiyaci olan komsularla ayni
+# ag uzerinde bulunur. Ornegin incident-service ele gecirilse dahi identity-db'ye,
+# ai-db'ye veya gamification-cache'e dogrudan ag seviyesinde erisemez - sadece
+# kendi veritabanina (incident-data-net) ve paylasilan servis dusuncesine
+# (services-net) erisebilir. Bkz. docs/ARCHITECTURE.md Bolum 19.
+# ---------------------------------------------------------------------------
+networks:
+  edge-net:        # Internet/tarayici -> frontend, gateway
+  services-net:    # Servisler arasi REST + RabbitMQ event bus
+  identity-data-net:
+  incident-data-net:
+  ai-data-net:
+  gamification-data-net:
+  observability-net:
+
+volumes:
+  identity_db_data:
+  incident_db_data:
+  incident_mongo_data:
+  ai_db_data:
+  gamification_db_data:
+  rabbitmq_data:
+  loki_data:
+  grafana_data:
+
+# Faz 3 - Secret yonetimi: tum sirlar Docker Compose'un native `secrets:` mekanizmasiyla
+# dosya olarak mount edilir; hicbir sir imaja gomulmez veya duz metin env var olarak
+# tasinmaz. Kaynak dosyalar `./scripts/generate-secrets.sh` ile uretilir (bkz. secrets/README.md).
+secrets:
+  identity_db_password:
+    file: ./secrets/identity_db_password.txt
+  incident_db_password:
+    file: ./secrets/incident_db_password.txt
+  ai_db_password:
+    file: ./secrets/ai_db_password.txt
+  gamification_db_password:
+    file: ./secrets/gamification_db_password.txt
+  incident_mongo_password:
+    file: ./secrets/incident_mongo_password.txt
+  rabbitmq_password:
+    file: ./secrets/rabbitmq_password.txt
+  internal_api_key:
+    file: ./secrets/internal_api_key.txt
+  jwt_private_key:
+    file: ./secrets/jwt_private_key.pem
+  jwt_public_key:
+    file: ./secrets/jwt_public_key.pem
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password.txt
+
+x-resource-defaults: &default-resources
+  deploy:
+    resources:
+      limits:
+        cpus: "1.0"
+        memory: 512M
+      reservations:
+        memory: 128M
+
+services:
+  # ---------------------------------------------------------------------
+  # Mesajlasma altyapisi (event bus)
+  # ---------------------------------------------------------------------
+  rabbitmq:
+    build: ./infra/rabbitmq
+    container_name: netopscell-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: netopscell_app
+      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_password
+    secrets: [rabbitmq_password]
+    ports:
+      - "5672:5672"    # AMQP (demo/incelemeye acik; uretimde VPN/bastion arkasinda olur)
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks: [services-net]
+    <<: *default-resources
+
+  # ---------------------------------------------------------------------
+  # Veritabanlari (database-per-service, host'a acik degil - sadece sahibi servis erisir)
+  # ---------------------------------------------------------------------
+  identity-db:
+    image: postgres:16-alpine
+    container_name: netopscell-identity-db
+    environment:
+      POSTGRES_DB: identity
+      POSTGRES_USER: identity_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/identity_db_password
+    secrets: [identity_db_password]
+    volumes:
+      - identity_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity_user -d identity"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [identity-data-net]
+
+  incident-db:
+    image: postgres:16-alpine
+    container_name: netopscell-incident-db
+    environment:
+      POSTGRES_DB: incident
+      POSTGRES_USER: incident_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/incident_db_password
+    secrets: [incident_db_password]
+    volumes:
+      - incident_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U incident_user -d incident"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [incident-data-net]
+
+  # Faz 3: saha iletisimi (mesaj icerigi, teslim/okunma durumu) yuksek hacimli,
+  # dokuman-yapili, ekleme-agirlikli veridir - iliskisel yerine NoSQL'e tasindi
+  # (bkz. docs/ARCHITECTURE.md Bolum 20 - Mesajlasma Mimarisi).
+  incident-mongo:
+    image: mongo:7
+    container_name: netopscell-incident-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: incident_service
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/incident_mongo_password
+      MONGO_INITDB_DATABASE: incident_messages
+    secrets: [incident_mongo_password]
+    volumes:
+      - incident_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [incident-data-net]
+
+  ai-db:
+    image: postgres:16-alpine
+    container_name: netopscell-ai-db
+    environment:
+      POSTGRES_DB: ai
+      POSTGRES_USER: ai_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/ai_db_password
+    secrets: [ai_db_password]
+    volumes:
+      - ai_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_user -d ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [ai-data-net]
+
+  gamification-db:
+    image: postgres:16-alpine
+    container_name: netopscell-gamification-db
+    environment:
+      POSTGRES_DB: gamification
+      POSTGRES_USER: gamification_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/gamification_db_password
+    secrets: [gamification_db_password]
+    volumes:
+      - gamification_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gamification_user -d gamification"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [gamification-data-net]
+
+  gamification-cache:
+    image: redis:7-alpine
+    container_name: netopscell-gamification-cache
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [gamification-data-net]
+
+  # ---------------------------------------------------------------------
+  # Mikroservisler
+  # ---------------------------------------------------------------------
+  identity-service:
+    build: ./services/identity-service
+    container_name: netopscell-identity-service
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DB_HOST: identity-db
+      DB_PORT: 5432
+      DB_NAME: identity
+      DB_USER: identity_user
+      DB_PASSWORD_FILE: /run/secrets/identity_db_password
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 7d
+      JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
+      JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+      OTP_MODE: SIMULATED
+      OTP_FIXED_CODE: "1234"
+      ACCOUNT_LOCK_MAX_ATTEMPTS: 5
+      ACCOUNT_LOCK_DURATION_MINUTES: 15
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: netopscell_app
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+    secrets: [identity_db_password, jwt_private_key, jwt_public_key, rabbitmq_password, internal_api_key]
+    ports:
+      - "3001:3001"
+    depends_on:
+      identity-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3001/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [identity-data-net, services-net]
+    read_only: true
+    tmpfs: [/tmp]
+    <<: *default-resources
+
+  incident-service:
+    build: ./services/incident-service
+    container_name: netopscell-incident-service
+    environment:
+      PORT: 3002
+      NODE_ENV: production
+      DB_HOST: incident-db
+      DB_PORT: 5432
+      DB_NAME: incident
+      DB_USER: incident_user
+      DB_PASSWORD_FILE: /run/secrets/incident_db_password
+      MONGO_HOST: incident-mongo
+      MONGO_PORT: 27017
+      MONGO_USER: incident_service
+      MONGO_PASSWORD_FILE: /run/secrets/incident_mongo_password
+      MONGO_DB: incident_messages
+      JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_SERVICE_TIMEOUT_MS: 2000
+      SLA_KRITIK_HOURS: 1
+      SLA_YUKSEK_HOURS: 4
+      SLA_ORTA_HOURS: 12
+      SLA_DUSUK_HOURS: 48
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: netopscell_app
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+    secrets: [incident_db_password, incident_mongo_password, jwt_public_key, rabbitmq_password, internal_api_key]
+    ports:
+      - "3002:3002"
+    depends_on:
+      incident-db:
+        condition: service_healthy
+      incident-mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3002/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [incident-data-net, services-net]
+    read_only: true
+    tmpfs: [/tmp]
+    <<: *default-resources
+
+  ai-service:
+    build: ./services/ai-service
+    container_name: netopscell-ai-service
+    environment:
+      PORT: 8000
+      ENV: production
+      DB_HOST: ai-db
+      DB_PORT: 5432
+      DB_NAME: ai
+      DB_USER: ai_user
+      DB_PASSWORD_FILE: /run/secrets/ai_db_password
+      MODEL_PATH: ./models/model_v1.joblib
+      MODEL_VERSION: v1
+      MIN_ACCEPTABLE_MACRO_F1: 0.85
+      THRESHOLD_IZLE: 0.40
+      THRESHOLD_ACIL: 0.85
+      SCORE_WEIGHT_UZMANLIK: 0.4
+      SCORE_WEIGHT_MESAFE: 0.3
+      SCORE_WEIGHT_BOSLUK: 0.3
+      TEAM_MAX_CAPACITY: 5
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: netopscell_app
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
+      IDENTITY_SERVICE_INTERNAL_URL: http://identity-service:3001
+      INCIDENT_SERVICE_INTERNAL_URL: http://incident-service:3002
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+    secrets: [ai_db_password, rabbitmq_password, internal_api_key]
+    ports:
+      - "8000:8000"
+    depends_on:
+      ai-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [ai-data-net, services-net]
+    <<: *default-resources
+
+  gamification-service:
+    build: ./services/gamification-service
+    container_name: netopscell-gamification-service
+    environment:
+      PORT: 3003
+      NODE_ENV: production
+      DB_HOST: gamification-db
+      DB_PORT: 5432
+      DB_NAME: gamification
+      DB_USER: gamification_user
+      DB_PASSWORD_FILE: /run/secrets/gamification_db_password
+      REDIS_HOST: gamification-cache
+      REDIS_PORT: 6379
+      JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: netopscell_app
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
+    secrets: [gamification_db_password, jwt_public_key, rabbitmq_password, internal_api_key]
+    ports:
+      - "3003:3003"
+    depends_on:
+      gamification-db:
+        condition: service_healthy
+      gamification-cache:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3003/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [gamification-data-net, services-net]
+    read_only: true
+    tmpfs: [/tmp]
+    <<: *default-resources
+
+  # ---------------------------------------------------------------------
+  # Gateway ve Frontend
+  # ---------------------------------------------------------------------
+  gateway:
+    build: ./gateway
+    container_name: netopscell-gateway
+    environment:
+      PORT: 8080
+      JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+      IDENTITY_SERVICE_URL: http://identity-service:3001
+      INCIDENT_SERVICE_URL: http://incident-service:3002
+      AI_SERVICE_URL: http://ai-service:8000
+      GAMIFICATION_SERVICE_URL: http://gamification-service:3003
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+    secrets: [jwt_public_key]
+    ports:
+      - "8080:8080"
+    depends_on:
+      identity-service:
+        condition: service_healthy
+      incident-service:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+      gamification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8080/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [edge-net, services-net]
+    read_only: true
+    tmpfs: [/tmp]
+    <<: *default-resources
+
+  frontend:
+    build: ./frontend
+    container_name: netopscell-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
+    networks: [edge-net]
+    <<: *default-resources
+
+  # ---------------------------------------------------------------------
+  # Merkezi loglama ve izleme (Faz 3)
+  # ---------------------------------------------------------------------
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: netopscell-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./observability/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [observability-net]
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: netopscell-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks: [observability-net]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: netopscell-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    secrets: [grafana_admin_password]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    ports:
+      - "3100:3000"
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks: [observability-net]

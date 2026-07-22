@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-surface-subtle text-navy-950 font-sans;
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection {
+    @apply bg-brand-yellow/40;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-navy-200 rounded-full;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Leaflet - tasarim sistemiyle uyumlu hale getirme */
+.leaflet-container {
+  font-family: "Inter", system-ui, sans-serif;
+  background: #eef1f6;
+}
+.leaflet-popup-content-wrapper {
+  border-radius: 0.875rem;
+  box-shadow: 0 4px 12px rgba(15, 26, 77, 0.12);
+}
+.leaflet-popup-tip {
+  box-shadow: none;
+}
+.leaflet-control-zoom a {
+  border-radius: 0.5rem !important;
+  color: #0f1a4d !important;
+}

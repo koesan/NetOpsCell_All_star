@@ -1,0 +1,41 @@
+# Node
+node_modules/
+dist/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Env
+.env
+*.env
+!.env.example
+
+# Secrets (Faz 3 - bkz. scripts/generate-secrets.sh, docs/ARCHITECTURE.md Bolum 19)
+# Repoya ASLA dahil edilmez; her gelistirici/ortam kendi secrets/ dizinini uretir.
+secrets/*
+!secrets/.gitkeep
+!secrets/README.md
+
+# Eski (Faz 0-2) paylasilan anahtar kopyalari - Faz 3'te Docker secrets'a tasindi
+keys/
+services/*/keys/
+gateway/keys/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Docker
+*.pid
+
+# Case dokumani ve ic dokumantasyon (repoya dahil edilmez)
+/docs/
+/CodeNight_FINAL_NetOpsCell_Case.pdf
+
+# Claude Code yerel oturum durumu
+/.claude/
