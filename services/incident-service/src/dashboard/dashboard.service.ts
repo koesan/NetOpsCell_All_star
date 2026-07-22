@@ -38,6 +38,33 @@ export class DashboardService {
       .getRawMany();
   }
 
+  /** Case 7: "Öncelik dağılımı VE TREND". Son 14 gunun gunluk oncelik kirilimini doner —
+   * frontend'de yigilmis (stacked) alan grafigi olarak gosterilir. Gun bazinda pivotlanmis
+   * satirlar doner: { day: 'YYYY-MM-DD', KRITIK: n, YUKSEK: n, ORTA: n, DUSUK: n }. */
+  private async priorityTrend() {
+    const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const rows = await this.incidentRepo
+      .createQueryBuilder("incident")
+      .select("TO_CHAR(incident.createdAt, 'YYYY-MM-DD')", "day")
+      .addSelect("incident.priority", "priority")
+      .addSelect("COUNT(*)", "count")
+      .where("incident.createdAt >= :since", { since })
+      .groupBy("day")
+      .addGroupBy("incident.priority")
+      .orderBy("day", "ASC")
+      .getRawMany<{ day: string; priority: string; count: string }>();
+
+    const byDay = new Map<string, Record<string, number>>();
+    for (const row of rows) {
+      const entry = byDay.get(row.day) ?? { KRITIK: 0, YUKSEK: 0, ORTA: 0, DUSUK: 0 };
+      entry[row.priority] = parseInt(row.count, 10);
+      byDay.set(row.day, entry);
+    }
+    return Array.from(byDay.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, counts]) => ({ day, ...counts }));
+  }
+
   private async slaSummary() {
     const totalResolved = await this.incidentRepo.count({
       where: { status: In([IncidentStatus.COZULDU, IncidentStatus.KAPANDI]) },
@@ -47,10 +74,16 @@ export class DashboardService {
     });
     const complianceRate = totalResolved > 0 ? Math.round(((totalResolved - exceededResolved) / totalResolved) * 10000) / 100 : 100;
 
-    const exceededActive = await this.incidentRepo.find({
-      where: { status: In(ACTIVE_STATUSES), slaExceededNotified: true },
-      order: { slaDeadline: "ASC" },
-    });
+    // Case 4.4: "KRITIK vaka kirmizi isaretlenir, supervizor panelinde EN USTTE gorunur" —
+    // oncelik sirasina gore (KRITIK ilk) siralanir, ayni oncelikte en cok gecikmis olan ustte.
+    const priorityRank = "CASE incident.priority WHEN 'KRITIK' THEN 0 WHEN 'YUKSEK' THEN 1 WHEN 'ORTA' THEN 2 ELSE 3 END";
+    const exceededActive = await this.incidentRepo
+      .createQueryBuilder("incident")
+      .where("incident.status IN (:...statuses)", { statuses: ACTIVE_STATUSES })
+      .andWhere("incident.slaExceededNotified = true")
+      .orderBy(priorityRank, "ASC")
+      .addOrderBy("incident.slaDeadline", "ASC")
+      .getMany();
 
     return { complianceRatePercent: complianceRate, totalResolved, exceededActiveCount: exceededActive.length, exceededActive };
   }
@@ -96,17 +129,20 @@ export class DashboardService {
   }
 
   async getSummary() {
-    const [faultTypeDistribution, priorityDistribution, sla, fieldTeamPerformance, pendingAssignmentQueue] = await Promise.all([
-      this.faultTypeDistribution(),
-      this.priorityDistribution(),
-      this.slaSummary(),
-      this.fieldTeamPerformance(),
-      this.pendingAssignmentQueue(),
-    ]);
+    const [faultTypeDistribution, priorityDistribution, priorityTrend, sla, fieldTeamPerformance, pendingAssignmentQueue] =
+      await Promise.all([
+        this.faultTypeDistribution(),
+        this.priorityDistribution(),
+        this.priorityTrend(),
+        this.slaSummary(),
+        this.fieldTeamPerformance(),
+        this.pendingAssignmentQueue(),
+      ]);
 
     return {
       faultTypeDistribution,
       priorityDistribution,
+      priorityTrend,
       sla,
       fieldTeamPerformance,
       pendingAssignmentQueue,

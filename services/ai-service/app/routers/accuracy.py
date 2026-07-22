@@ -34,7 +34,20 @@ def accuracy(db: Session = Depends(get_db)):
     misclassified = db.query(func.count(Misclassification.id)).scalar() or 0
     accuracy_percent = round(((total - misclassified) / total) * 100, 2) if total > 0 else 0.0
 
-    return AccuracyResponse(total_predictions=total, misclassifications=misclassified, accuracy_percent=accuracy_percent)
+    # Yanlis alarm: operator vakayi inceleyip "aslinda tanimlanabilir bir ariza yok" (BELIRSIZ)
+    # sonucuna vardiginda kaydedilen ozel bir duzeltme turu (bkz. incident.type.changed tuketicisi).
+    false_alarms = (
+        db.query(func.count(Misclassification.id)).filter(Misclassification.corrected_type == "BELIRSIZ").scalar() or 0
+    )
+    false_alarm_rate = round((false_alarms / total) * 100, 2) if total > 0 else 0.0
+
+    return AccuracyResponse(
+        total_predictions=total,
+        misclassifications=misclassified,
+        accuracy_percent=accuracy_percent,
+        false_alarms=false_alarms,
+        false_alarm_rate_percent=false_alarm_rate,
+    )
 
 
 @router.get("/accuracy/by-category", response_model=list[CategoryAccuracy])

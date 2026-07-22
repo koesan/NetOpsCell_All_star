@@ -123,6 +123,11 @@ birleşir (`app/ml/rules.py`, birim testli):
 | 0.40 – 0.85 | YUKSEK | ORTA |
 | < 0.40 | DUSUK | DUSUK |
 
+Canlı doğrulama (demo verisiyle): aynı olasılık bandındaki 5 vakadan 4'ü büyük kapsamalı
+istasyonlarda (Kadıköy, Taksim, Ataşehir, Maslak — 38-55K abone) KRITIK'e yükseldi, düşük
+kapsamalı Bakırköy vakası (29K abone) YUKSEK'te kaldı — matris gerçekten kapsamaya göre ayrım
+yapıyor, sabit bir eşik değil.
+
 Ayrı bir "öncelik ML modeli" bilinçli olarak eğitilmedi: case önceliği bu iki girdiden
 tanımlar ve elimizde öncelik etiketli veri yoktur — opak bir model yerine denetlenebilir,
 süpervizörün her zaman override edebildiği (ve override'ın AI doğruluk metriğine yansıdığı)
@@ -154,15 +159,22 @@ bir matris hem case'e hem mühendislik pratiğine daha uygundur. Eskalasyon risk
 
 ## Güvenlik (case 10 — jüri saldırı senaryolarına karşı)
 
-| Saldırı | Savunma |
-|---|---|
-| SQL injection | Tüm sorgular ORM/parametrik (TypeORM, SQLAlchemy); class-validator + Pydantic girdi doğrulama |
-| Yetkisiz endpoint (müşteri → süpervizör) | Her endpoint'te sunucu tarafı rol guard'ı → 403 + audit log |
-| IDOR (başkasının kaydı) | Sahiplik kontrolü (`assertOwnership`): müşteri yalnız kendi, teknisyen yalnız atanan vakayı görür |
-| JWT manipülasyonu | RS256 + algoritma whitelist (`alg:none`/HS256 downgrade reddi) + issuer/audience doğrulama; Gateway'de ön-doğrulama |
-| Refresh token yeniden kullanımı | Token rotation + reuse detection: geçersiz kılınmış token kullanılırsa ailedeki TÜM oturumlar sonlandırılır |
-| XSS | React çıktı kaçışlama (dangerouslySetInnerHTML yok) + Helmet güvenlik başlıkları + CSP |
-| Brute-force | Gateway katmanlı rate limit (login 5/dk, OTP 5/dk, genel 100/dk) + Identity'de 5 hatada 15 dk hesap kilidi (kalan süre bilgisiyle) |
+Aşağıdaki senaryoların hepsi **çalışan sisteme karşı canlı olarak** yeniden test edildi (curl ile
+gerçek saldırı payload'ları gönderilerek, sadece kod okunarak değil):
+
+| Saldırı | Savunma | Canlı test sonucu |
+|---|---|---|
+| SQL injection | Tüm sorgular ORM/parametrik (TypeORM, SQLAlchemy); class-validator + Pydantic girdi doğrulama | `' OR 1=1 --` → 400 (alan format doğrulamasında reddedildi) |
+| Yetkisiz endpoint (müşteri → süpervizör) | Her endpoint'te sunucu tarafı rol guard'ı → 403 + audit log | Müşteri token'ıyla `/dashboard/summary`, `/admin/audit-logs`, manuel atama → hepsi 403 |
+| IDOR (başkasının kaydı) | Sahiplik kontrolü (`assertOwnership`): müşteri yalnız kendi, teknisyen yalnız atanan vakayı görür | İkinci müşteri hesabıyla başka müşterinin vaka ID'sine erişim → 403 + `IDOR_DENEMESI` audit log kaydı |
+| JWT manipülasyonu | RS256 + algoritma whitelist (`alg:none`/HS256 downgrade reddi) + issuer/audience doğrulama; Gateway'de ön-doğrulama | Payload/imza ortası değiştirilmiş token → 401; `alg:none` sahte token → 401; süresi dolmuş token → 401 |
+| **Refresh token yeniden kullanımı** | Token rotation + reuse detection: geçersiz kılınmış token kullanılırsa **ailedeki TÜM oturumlar** sonlandırılır | 🔧 Canlı testte gerçek bir hata bulundu ve düzeltildi: rotasyondaki kardeş token, TypeORM `update()` kriterinde düz `null` yerine `IsNull()` operatörü gerektiği için iptal edilmiyordu — düzeltme sonrası doğrulandı, regresyon testi eklendi (`auth.service.spec.ts`) |
+| XSS | React çıktı kaçışlama (`dangerouslySetInnerHTML` hiçbir yerde kullanılmıyor) + Helmet güvenlik başlıkları + CSP | `<script>alert(1)</script>` şikayet metnine enjekte edildi → ham metin olarak saklanıyor, tarayıcıda salt metin olarak (escaped) render ediliyor, CSP `script-src 'self'` |
+| Brute-force | Gateway katmanlı rate limit (login 5/dk, OTP 5/dk, genel 100/dk) + Identity'de 5 hatada 15 dk hesap kilidi (kalan süre bilgisiyle) | 6. ardışık yanlış giriş denemesi → 429 (`RATE_LIMITED`) |
+
+Bu tablodaki refresh-token bulgusu, canlı güvenlik testinin neden salt kod incelemesinden daha
+güvenilir olduğunun somut kanıtıdır: kod okunduğunda mantık doğru görünüyordu, yalnızca gerçek
+bir rotasyon + yeniden-kullanım zinciri çalıştırıldığında ortaya çıktı.
 
 ## Rol Bazlı Görünürlük (case 3.3 yetki matrisi)
 
@@ -181,6 +193,42 @@ Yetkiler yalnızca menüde gizlenmez; her endpoint sunucu tarafında rol guard'�
 kontrolüyle korunur (yetkisiz istek → 403 + audit log).
 
 ## Proje Durumu
+
+**Faz 7 — Uçtan Uca Denetim ve Kritik Güvenlik Düzeltmesi:**
+
+Case dokümanının Bölüm 4 (Incident), 6 (Gamification), 7 (Dashboard), 10 (Güvenlik) ve 11 (Demo
+akışları) satır satır kod karşısında denetlendi; bulunan gerçek eksiklikler giderildi:
+
+- 🔒 **Kritik güvenlik düzeltmesi:** Refresh token reuse-detection'da rotasyondaki kardeş token
+  iptal edilmiyordu (TypeORM `update()` kriterinde düz `null` → `IsNull()` operatörüne çevrildi).
+  Canlı saldırı simülasyonuyla bulundu, düzeltildi, regresyon testiyle kilitlendi. Detay: yukarıdaki
+  "Güvenlik" bölümü.
+- ✅ **Case 4.2 state machine düzeltmesi:** `PARCA_BEKLENIYOR → MUDAHALE_EDILIYOR` geçişinin
+  "Kim Yapabilir" hanesi case'de "Sistem"dir; kod saha teknisyenine izin veriyordu. Artık NOC/
+  Süpervizör (parça tedarikini doğrulayan taraf) yapıyor, `incident.parts.supplied` event'i
+  gerçekten yayınlanıyor (önceden "bonus/gelecek" olarak işaretliydi).
+- ✅ **Case 4.3 öncelik matrisi gerçek kapsama verisiyle çalışıyor** (yukarıda detaylı).
+- ✅ **Case 3.4/10 audit log genişletildi:** IDOR denemeleri (`IDOR_DENEMESI`) ve KRITIK öncelik
+  değişiklikleri (`ONCELIK_KRITIK_DEGISIGI`, `VAKA_KRITIK_DURUM_DEGISIKLIGI`) artık merkezi audit
+  log'a düşüyor — önceden yalnızca rol-bazlı 403'ler loglanıyordu.
+- ✅ **Case 7 dashboard eksikleri giderildi:** "Öncelik dağılımı VE TREND" — son 14 günün günlük
+  öncelik kırılımı artık yığılmış alan grafiğiyle gösteriliyor (önceden yalnızca anlık dağılım
+  vardı). "AI doğruluk metriği (false alarm oranı dahil)" — yanlış alarm oranı artık hesaplanıp
+  gösteriliyor. "KRITIK vaka süpervizör panelinde en üstte görünür" — SLA aşmış aktif vakalar artık
+  panelin en tepesinde öncelik sıralı bir liste olarak render ediliyor (önceden yalnızca bir sayıydı).
+- ✅ **Manuel atama UI'ı eklendi:** Backend'de tam çalışan `PATCH /incidents/:id/assign` endpoint'i
+  arayüzde hiçbir yerden tetiklenemiyordu. Vaka detayında (Süpervizör) ekip seçimli bir "Manuel
+  Atama" kartı eklendi; dashboard'daki bekleyen kuyruktan da tek tıkla vaka detayına gidilebiliyor.
+- ✅ **Case 6.4 profil ekranı tamamlandı:** "Günlük/haftalık sıralama" isteniyordu, yalnızca günlük
+  gösteriliyordu — artık ikisi de (toggle ile) görünüyor.
+- ✅ **Gemini analizi artık mesaj thread'inde otomatik görünüyor:** Önceden yalnızca manuel
+  tıklamayla görülebilen bir panel iken, şimdi vaka oluşur oluşmaz müşterinin şikayeti + AI'ın
+  "büyük ihtimalle X alanında sorun olabilir" analizi WhatsApp tarzı sohbette bir mesaj gibi
+  otomatik beliriyor (NOC/teknisyen ekstra tıklama yapmadan görür).
+- ✅ **Turkcell resmi logosu** kullanılıyor (sidebar, giriş ekranı, favicon) — yer tutucu amblem yerine.
+- ✅ Bağımsızlık testi bu turda da yeniden doğrulandı: `docker stop ai-service` sırasında telemetri
+  yine BELIRSIZ/ORTA vaka açıyor, UI'da amber uyarı bandı çıkıyor, sistemin geri kalanı çalışmaya
+  devam ediyor.
 
 **Faz 6 — AI Derinleştirme + Turkcell Kurumsal Kimlik:**
 

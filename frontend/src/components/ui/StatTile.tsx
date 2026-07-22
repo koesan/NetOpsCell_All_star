@@ -6,7 +6,7 @@ interface StatTileProps {
   label: string;
   value: string | number;
   icon: LucideIcon;
-  accent?: "navy" | "yellow" | "kritik" | "emerald";
+  accent?: "navy" | "yellow" | "kritik" | "emerald" | "amber";
   hint?: string;
 }
 
@@ -15,6 +15,7 @@ const ACCENT_STYLES: Record<NonNullable<StatTileProps["accent"]>, string> = {
   yellow: "bg-yellow-50 text-yellow-700",
   kritik: "bg-red-50 text-priority-kritik",
   emerald: "bg-emerald-50 text-emerald-700",
+  amber: "bg-amber-50 text-amber-700",
 };
 
 export function StatTile({ label, value, icon: Icon, accent = "navy", hint }: StatTileProps) {

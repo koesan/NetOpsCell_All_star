@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { LessThan, Repository } from "typeorm";
+import { IsNull, LessThan, Repository } from "typeorm";
 import * as bcrypt from "bcryptjs";
 import * as crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
@@ -190,8 +190,11 @@ export class AuthService {
 
     if (tokenRow.usedAt || tokenRow.revokedAt) {
       // Reuse detection: daha once kullanilmis/iptal edilmis bir refresh token tekrar geldi -> calinma supheli.
+      // KRITIK: criteria objesinde duz `revokedAt: null` TypeORM'un update() metodunda IS NULL'a
+      // guvenilir sekilde donusmuyor (canli guvenlik testinde yakalandi: rotasyondaki kardes token
+      // iptal edilmeden calismaya devam ediyordu). IsNull() operatoru dogru SQL'i garanti eder.
       await this.refreshTokenRepo.update(
-        { familyId: tokenRow.familyId, revokedAt: null as unknown as Date },
+        { familyId: tokenRow.familyId, revokedAt: IsNull() },
         { revokedAt: new Date() }
       );
       await this.auditService.log({

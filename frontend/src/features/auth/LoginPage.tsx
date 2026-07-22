@@ -8,6 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { extractErrorMessage } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import turkcellLogo from "../../assets/turkcell-logo.webp";
 
 type Mode = "staff" | "customer";
 type CustomerStep = "details" | "otp";
@@ -85,9 +86,7 @@ export function LoginPage() {
           }}
         />
         <div className="relative flex items-center gap-2.5">
-          <div className="flex h-10 w-10 rotate-3 items-center justify-center rounded-xl bg-brand-yellow shadow-[0_2px_12px_rgba(255,201,0,0.4)]">
-            <span className="-rotate-3 text-xl font-black leading-none text-navy-950">T</span>
-          </div>
+          <img src={turkcellLogo} alt="Turkcell" className="h-10 w-10 drop-shadow-[0_2px_10px_rgba(255,201,0,0.4)]" />
           <div>
             <p className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-brand-yellow">Turkcell</p>
             <span className="text-lg font-bold leading-tight tracking-tight">NetOpsCell</span>
@@ -129,9 +128,7 @@ export function LoginPage() {
           className="w-full max-w-sm"
         >
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-9 w-9 rotate-3 items-center justify-center rounded-lg bg-brand-yellow">
-              <span className="-rotate-3 text-lg font-black leading-none text-navy-950">T</span>
-            </div>
+            <img src={turkcellLogo} alt="Turkcell" className="h-9 w-9" />
             <div>
               <p className="text-[9px] font-extrabold uppercase tracking-[0.22em] text-navy-500">Turkcell</p>
               <span className="text-base font-bold leading-tight tracking-tight text-navy-950">NetOpsCell</span>

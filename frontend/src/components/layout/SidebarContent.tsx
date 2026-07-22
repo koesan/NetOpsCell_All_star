@@ -3,6 +3,7 @@ import { LogOut } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { NAV_CONFIG, ROLE_LABELS } from "./navConfig";
 import { cn } from "../../lib/cn";
+import turkcellLogo from "../../assets/turkcell-logo.webp";
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
@@ -11,11 +12,9 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col bg-navy-950 text-white">
-      {/* Turkcell kurumsal kimligi: sari amblem + lacivert zemin (marka paleti: #FFC900 / #001E62) */}
+      {/* Turkcell kurumsal kimligi: resmi logo + lacivert zemin (marka paleti: #FFC900 / #001E62) */}
       <div className="flex items-center gap-2.5 px-6 py-6">
-        <div className="flex h-9 w-9 rotate-3 items-center justify-center rounded-[10px] bg-brand-yellow shadow-[0_2px_10px_rgba(255,201,0,0.35)]">
-          <span className="-rotate-3 text-lg font-black leading-none text-navy-950">T</span>
-        </div>
+        <img src={turkcellLogo} alt="Turkcell" className="h-9 w-9 drop-shadow-[0_2px_8px_rgba(255,201,0,0.35)]" />
         <div>
           <p className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-brand-yellow">Turkcell</p>
           <p className="text-sm font-bold leading-tight tracking-tight">NetOpsCell</p>

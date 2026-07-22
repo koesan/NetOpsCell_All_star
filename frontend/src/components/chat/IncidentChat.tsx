@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay, isToday, isYesterday } from "date-fns";
 import { tr } from "date-fns/locale";
-import { Check, CheckCheck, Clock3, Headset, Send, ShieldCheck, Wrench } from "lucide-react";
+import { Check, CheckCheck, Clock3, Headset, Send, ShieldCheck, Sparkles, User, Wrench } from "lucide-react";
 import type { IncidentMessage, Role } from "../../types";
 
 /**
@@ -18,6 +18,7 @@ const ROLE_META: Record<string, { label: string; className: string; icon: typeof
   SAHA_TEKNISYENI: { label: "Saha", className: "bg-emerald-100 text-emerald-700", icon: Wrench },
   NOC_OPERATORU: { label: "NOC", className: "bg-sky-100 text-sky-700", icon: Headset },
   SUPERVIZOR: { label: "Süpervizör", className: "bg-violet-100 text-violet-700", icon: ShieldCheck },
+  MUSTERI: { label: "Müşteri", className: "bg-navy-100 text-navy-600", icon: User },
 };
 
 interface PendingMessage {
@@ -117,6 +118,45 @@ export function IncidentChat({ messages, currentUserId, onSend, disabled, height
                     {msg.content}
                     <span className="ml-1.5 text-navy-300">{format(createdAt, "HH:mm")}</span>
                   </span>
+                </div>
+              </div>
+            );
+          }
+
+          // Musterinin sikayet metnine Gemini'nin verdigi on analiz — sanki AI thread'e
+          // bizzat yazmis gibi sol tarafta ayirt edici bir balon olarak gosterilir.
+          if (!isPendingMsg && (item as IncidentMessage).messageType === "AI_ANALYSIS") {
+            lastSender = null;
+            const msg = item as IncidentMessage;
+            const analysis = msg.analysis;
+            return (
+              <div key={msg._id}>
+                {showDay && <DaySeparator label={dayLabel(createdAt)} />}
+                <div className="mt-2.5 flex justify-start">
+                  <div className="max-w-[85%] rounded-2xl rounded-tl-md border border-brand-yellow/50 bg-brand-yellow/10 px-3.5 py-2.5 shadow-sm">
+                    <div className="mb-1 flex items-center gap-1.5">
+                      <Sparkles className="h-3 w-3 text-navy-700" />
+                      <span className="text-[11px] font-semibold text-navy-800">AI Ön Analiz</span>
+                      {analysis && (
+                        <span className="rounded-full bg-navy-900 px-1.5 py-px text-[9px] font-semibold text-brand-yellow">
+                          {analysis.muhtemel_alan}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[13px] leading-relaxed text-navy-800">
+                      Büyük ihtimalle <strong>{analysis?.muhtemel_alan ?? "belirsiz bir"}</strong> alanında sorun olabilir.{" "}
+                      {msg.content}
+                    </p>
+                    {analysis?.oneri && (
+                      <p className="mt-1 text-[12px] leading-relaxed text-navy-600">
+                        <span className="font-semibold">Öneri:</span> {analysis.oneri}
+                      </p>
+                    )}
+                    <p className="mt-1 flex items-center justify-between text-[10px] text-navy-400">
+                      <span>güven %{Math.round((analysis?.guven ?? 0) * 100)} · bilgilendirme amaçlıdır</span>
+                      <span>{format(createdAt, "HH:mm")}</span>
+                    </p>
+                  </div>
                 </div>
               </div>
             );

@@ -8,7 +8,8 @@ describe("state-machine", () => {
     [IncidentStatus.ATANDI, IncidentStatus.YOLDA, Role.SAHA_TEKNISYENI],
     [IncidentStatus.YOLDA, IncidentStatus.MUDAHALE_EDILIYOR, Role.SAHA_TEKNISYENI],
     [IncidentStatus.MUDAHALE_EDILIYOR, IncidentStatus.PARCA_BEKLENIYOR, Role.SAHA_TEKNISYENI],
-    [IncidentStatus.PARCA_BEKLENIYOR, IncidentStatus.MUDAHALE_EDILIYOR, Role.SAHA_TEKNISYENI],
+    // Case 4.2: bu gecisin "Kim Yapabilir" hanesi Sistem'dir; NOC/dispatch parca tedarigini dogrular
+    [IncidentStatus.PARCA_BEKLENIYOR, IncidentStatus.MUDAHALE_EDILIYOR, Role.NOC_OPERATORU],
     [IncidentStatus.MUDAHALE_EDILIYOR, IncidentStatus.COZULDU, Role.SAHA_TEKNISYENI],
     [IncidentStatus.COZULDU, IncidentStatus.KAPANDI, Role.NOC_OPERATORU],
   ];
@@ -35,6 +36,12 @@ describe("state-machine", () => {
 
   it("NOC_OPERATORU sahaya ait bir gecisi (ATANDI -> YOLDA) yapamaz", () => {
     expect(isValidTransition(IncidentStatus.ATANDI, IncidentStatus.YOLDA, Role.NOC_OPERATORU)).toBe(false);
+  });
+
+  it("SAHA_TEKNISYENI parca tedarigini kendi kendine onaylayamaz (case 4.2: bu gecis Sistem/NOC'a ait)", () => {
+    expect(isValidTransition(IncidentStatus.PARCA_BEKLENIYOR, IncidentStatus.MUDAHALE_EDILIYOR, Role.SAHA_TEKNISYENI)).toBe(
+      false
+    );
   });
 
   it("geriye donus (COZULDU -> MUDAHALE_EDILIYOR) tanimli degildir", () => {

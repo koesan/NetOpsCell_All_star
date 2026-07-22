@@ -160,6 +160,24 @@ export class IncidentsService {
       priority: saved.priority,
       created_at: saved.createdAt,
     });
+
+    // Musterinin sikayet metni + Gemini on analizi varsa, NOC/teknisyenin ekstra
+    // tiklama yapmadan gorecegi sekilde vaka acilir acilmaz mesaj thread'ine dusurulur.
+    if (dto.description && dto.complaintAnalysis) {
+      await this.messagingService.seedComplaintThread(
+        saved.id,
+        customerId,
+        dto.description,
+        dto.complaintAnalysis as unknown as {
+          muhtemel_alan: string;
+          olasi_neden: string;
+          oneri: string;
+          guven: number;
+          model?: string;
+        }
+      );
+    }
+
     return saved;
   }
 
@@ -251,28 +269,38 @@ export class IncidentsService {
 
   async getResolution(id: string, user: AccessTokenPayload): Promise<IncidentResolution | null> {
     const incident = await this.getOrThrow(id);
-    this.assertOwnership(incident, user);
+    await this.assertOwnership(incident, user);
     return this.resolutionRepo.findOne({ where: { incidentId: id } });
   }
 
-  private assertOwnership(incident: Incident, user: AccessTokenPayload) {
-    if (user.role === Role.MUSTERI && incident.customerId !== user.sub) {
-      throw new ForbiddenException("Bu kaydi goruntuleme yetkiniz yok.");
-    }
-    if (user.role === Role.SAHA_TEKNISYENI && incident.assignedTeamId !== user.sub) {
+  /** Sahiplik kontrolu: musteri sadece kendi, teknisyen sadece atanan vakayi gorebilir.
+   * Basarisiz deneme (orn. kayit ID degistirerek baskasinin verisine erisim - IDOR)
+   * case 3.4/10 geregi merkezi audit log'a bildirilir. */
+  private async assertOwnership(incident: Incident, user: AccessTokenPayload): Promise<void> {
+    const isForeignCustomerAccess = user.role === Role.MUSTERI && incident.customerId !== user.sub;
+    const isForeignTechnicianAccess = user.role === Role.SAHA_TEKNISYENI && incident.assignedTeamId !== user.sub;
+    if (isForeignCustomerAccess || isForeignTechnicianAccess) {
+      await this.eventPublisher.publish("audit.log", {
+        user_id: user.sub,
+        action_type: "IDOR_DENEMESI",
+        timestamp: new Date().toISOString(),
+        ip: null,
+        result: "FAILURE",
+        detail: { incident_id: incident.incidentNo, attempted_by_role: user.role },
+      });
       throw new ForbiddenException("Bu kaydi goruntuleme yetkiniz yok.");
     }
   }
 
   async findOne(id: string, user: AccessTokenPayload): Promise<Incident> {
     const incident = await this.getOrThrow(id);
-    this.assertOwnership(incident, user);
+    await this.assertOwnership(incident, user);
     return incident;
   }
 
   async updateStatus(id: string, dto: UpdateStatusDto, user: AccessTokenPayload): Promise<Incident> {
     const incident = await this.getOrThrow(id);
-    this.assertOwnership(incident, user);
+    await this.assertOwnership(incident, user);
 
     if (dto.status === IncidentStatus.COZULDU) {
       throw new BadRequestException("COZULDU gecisi icin /resolution endpoint'i kullanilmalidir (cozum notu zorunlu).");
@@ -296,6 +324,31 @@ export class IncidentsService {
     await this.incidentRepo.save(incident);
     await this.recordHistory(incident.id, from, dto.status, user.sub, dto.reason);
     await this.sendTransitionSystemMessage(incident, from, dto.status);
+
+    // Case 9: tasarlanmasi istenen event'lerden biri. Case 4.2 tablosunda bu gecisin
+    // "Kim Yapabilir" hanesi Sistem'dir (NOC/dispatch parca tedarigini dogrular) —
+    // teknisyenin kendi kendine PARCA_BEKLENIYOR'dan cikamamasi state-machine.ts'te ayrica sağlanir.
+    if (from === IncidentStatus.PARCA_BEKLENIYOR && dto.status === IncidentStatus.MUDAHALE_EDILIYOR) {
+      await this.eventPublisher.publish("incident.parts.supplied", {
+        incident_id: incident.incidentNo,
+        team_id: incident.assignedTeamId,
+        confirmed_by: user.sub,
+        confirmed_at: new Date().toISOString(),
+      });
+    }
+
+    // Case 3.4 "kritik durum degisiklikleri": oncelik KRITIK'e yukseldiginde veya
+    // KRITIK'ten dustugunde merkezi audit log'a (Identity Service) bildirilir.
+    if (dto.status === IncidentStatus.KAPANDI || incident.priority === Priority.KRITIK) {
+      await this.eventPublisher.publish("audit.log", {
+        user_id: user.sub,
+        action_type: "VAKA_KRITIK_DURUM_DEGISIKLIGI",
+        timestamp: new Date().toISOString(),
+        ip: null,
+        result: "SUCCESS",
+        detail: { incident_id: incident.incidentNo, from_status: from, to_status: dto.status, priority: incident.priority },
+      });
+    }
     await this.eventPublisher.publish("incident.status.changed", {
       incident_id: incident.incidentNo,
       from_status: from,
@@ -369,13 +422,14 @@ export class IncidentsService {
   /** Vaka zaman cizelgesi: durum gecis gecmisi (kim, ne zaman, neden). */
   async getHistory(id: string, user: AccessTokenPayload): Promise<IncidentStatusHistory[]> {
     const incident = await this.getOrThrow(id);
-    this.assertOwnership(incident, user);
+    await this.assertOwnership(incident, user);
     return this.historyRepo.find({ where: { incidentId: id }, order: { changedAt: "ASC" } });
   }
 
   async updateClassification(id: string, dto: ClassificationDto, user: AccessTokenPayload): Promise<Incident> {
     const incident = await this.getOrThrow(id);
     const originalType = incident.faultType;
+    const originalPriority = incident.priority;
 
     if (dto.faultType && dto.faultType !== incident.faultType) {
       incident.faultType = dto.faultType;
@@ -393,6 +447,20 @@ export class IncidentsService {
     if (dto.priority && dto.priority !== incident.priority) {
       incident.priority = dto.priority;
       incident.slaDeadline = this.slaDeadlineFor(dto.priority);
+      await this.recordHistory(incident.id, incident.status, incident.status, user.sub, `Oncelik degistirildi: ${originalPriority} -> ${dto.priority}`);
+
+      // Case 3.4 "kritik durum degisiklikleri": oncelik KRITIK'e yukselirse veya KRITIK'ten
+      // duserse merkezi audit log'a (Identity Service) bildirilir.
+      if (dto.priority === Priority.KRITIK || originalPriority === Priority.KRITIK) {
+        await this.eventPublisher.publish("audit.log", {
+          user_id: user.sub,
+          action_type: "ONCELIK_KRITIK_DEGISIKLIGI",
+          timestamp: new Date().toISOString(),
+          ip: null,
+          result: "SUCCESS",
+          detail: { incident_id: incident.incidentNo, original_priority: originalPriority, corrected_priority: dto.priority },
+        });
+      }
     }
 
     return this.incidentRepo.save(incident);
@@ -400,26 +468,26 @@ export class IncidentsService {
 
   async addMessage(id: string, dto: CreateMessageDto, user: AccessTokenPayload) {
     const incident = await this.getOrThrow(id);
-    this.assertOwnership(incident, user);
+    await this.assertOwnership(incident, user);
     return this.messagingService.sendMessage(id, user.sub, user.role, dto.content, user.name);
   }
 
   async getMessages(id: string, user: AccessTokenPayload) {
     const incident = await this.getOrThrow(id);
-    this.assertOwnership(incident, user);
+    await this.assertOwnership(incident, user);
     return this.messagingService.getThread(id);
   }
 
   async markMessagesRead(id: string, user: AccessTokenPayload) {
     const incident = await this.getOrThrow(id);
-    this.assertOwnership(incident, user);
+    await this.assertOwnership(incident, user);
     const updated = await this.messagingService.markThreadRead(id, user.sub);
     return { markedRead: updated };
   }
 
   async createResolution(id: string, dto: CreateResolutionDto, user: AccessTokenPayload): Promise<Incident> {
     const incident = await this.getOrThrow(id);
-    this.assertOwnership(incident, user);
+    await this.assertOwnership(incident, user);
 
     if (incident.status !== IncidentStatus.MUDAHALE_EDILIYOR) {
       throw new UnprocessableEntityException("Cozum notu sadece MUDAHALE_EDILIYOR durumundaki vakalar icin girilebilir.");

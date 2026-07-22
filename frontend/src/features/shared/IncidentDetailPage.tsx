@@ -24,13 +24,15 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
+import { Select } from "../../components/ui/Input";
 import { FaultTypeBadge, PriorityBadge, StatusBadge } from "../../components/ui/Badge";
 import { ErrorState, LoadingState } from "../../components/ui/States";
 import { OperationsMap } from "../../components/map/OperationsMap";
 import { IncidentChat } from "../../components/chat/IncidentChat";
 import { extractErrorMessage } from "../../lib/api";
 import { SlaCountdown } from "./SlaCountdown";
-import type { Incident, IncidentHistoryEntry, IncidentStatus } from "../../types";
+import type { Incident, IncidentHistoryEntry } from "../../types";
+import { STATUS_LABELS } from "../../lib/statusLabels";
 import {
   useConfirmAssign,
   useCreateResolution,
@@ -38,29 +40,31 @@ import {
   useIncidentHistory,
   useIncidentMessages,
   useIncidentResolution,
+  useManualAssign,
   useMarkMessagesRead,
   useRateResolution,
   useSendMessage,
   useStations,
+  useTeams,
   useUpdateStatus,
 } from "./incidentHooks";
 
-const NEXT_STATUS: Record<string, { label: string; status: string }[]> = {
-  ATANDI: [{ label: "Sahaya Hareket Et", status: "YOLDA" }],
-  YOLDA: [{ label: "Sahaya Ulaştım", status: "MUDAHALE_EDILIYOR" }],
-  MUDAHALE_EDILIYOR: [{ label: "Parça Bekleniyor", status: "PARCA_BEKLENIYOR" }],
-  PARCA_BEKLENIYOR: [{ label: "Parça Tedarik Edildi", status: "MUDAHALE_EDILIYOR" }],
+interface StatusAction {
+  label: string;
+  status: string;
+  /** Case 4.2 state machine tablosundaki "Kim Yapabilir" hanesiyle birebir eslesir. */
+  actor: "TEKNISYEN" | "NOC";
+}
+
+const NEXT_STATUS: Record<string, StatusAction[]> = {
+  ATANDI: [{ label: "Sahaya Hareket Et", status: "YOLDA", actor: "TEKNISYEN" }],
+  YOLDA: [{ label: "Sahaya Ulaştım", status: "MUDAHALE_EDILIYOR", actor: "TEKNISYEN" }],
+  MUDAHALE_EDILIYOR: [{ label: "Parça Bekleniyor", status: "PARCA_BEKLENIYOR", actor: "TEKNISYEN" }],
+  // Case 4.2: bu gecisin "Kim Yapabilir" hanesi Sistem'dir — NOC/dispatch parca tedarigini
+  // dogrular, saha teknisyeni kendi kendine bu durumdan cikamaz (bkz. incident.parts.supplied event'i).
+  PARCA_BEKLENIYOR: [{ label: "Parça Tedarik Edildi (Tedarik Onayı)", status: "MUDAHALE_EDILIYOR", actor: "NOC" }],
 };
 
-const STATUS_LABELS: Record<IncidentStatus, string> = {
-  YENI: "Yeni",
-  ATANDI: "Atandı",
-  YOLDA: "Yolda",
-  MUDAHALE_EDILIYOR: "Müdahale Ediliyor",
-  PARCA_BEKLENIYOR: "Parça Bekleniyor",
-  COZULDU: "Çözüldü",
-  KAPANDI: "Kapandı",
-};
 
 export function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -74,6 +78,7 @@ export function IncidentDetailPage() {
 
   const updateStatus = useUpdateStatus(id);
   const confirmAssign = useConfirmAssign(id);
+  const manualAssign = useManualAssign(id);
   const createResolution = useCreateResolution(id);
   const rateResolution = useRateResolution(id);
   const sendMessage = useSendMessage(id);
@@ -82,8 +87,10 @@ export function IncidentDetailPage() {
   const [resolutionNote, setResolutionNote] = useState("");
   const [rating, setRating] = useState(5);
   const [isPermanent, setIsPermanent] = useState(true);
+  const [selectedTeamId, setSelectedTeamId] = useState("");
 
   const role = user?.role;
+  const { data: teams } = useTeams(incident?.status === "YENI" && role === "SUPERVIZOR");
   const canMessage = role === "SAHA_TEKNISYENI" || role === "NOC_OPERATORU" || role === "SUPERVIZOR";
 
   // Thread goruntulenirken okunmamis mesajlari READ isaretle (MongoDB read-receipt)
@@ -98,7 +105,14 @@ export function IncidentDetailPage() {
   if (isError || !incident) return <ErrorState message="Vaka bulunamadı." onRetry={() => refetch()} />;
 
   const isAssignedTech = role === "SAHA_TEKNISYENI" && incident.assignedTeamId === user?.id;
-  const canTransition = (isAssignedTech || role === "SUPERVIZOR") && NEXT_STATUS[incident.status];
+  const isNocOrSupervisor = role === "NOC_OPERATORU" || role === "SUPERVIZOR";
+  // Her aksiyon case 4.2'deki "Kim Yapabilir" hanesine gore filtrelenir: teknisyen
+  // aksiyonlarini sadece atanan teknisyen (veya supervizor), NOC aksiyonlarini
+  // (parca tedarik onayi gibi) sadece NOC/supervizor gorur.
+  const availableActions = (NEXT_STATUS[incident.status] ?? []).filter(
+    (a) => role === "SUPERVIZOR" || (a.actor === "TEKNISYEN" && isAssignedTech) || (a.actor === "NOC" && isNocOrSupervisor)
+  );
+  const canTransition = availableActions.length > 0;
   const canResolve = incident.status === "MUDAHALE_EDILIYOR" && (isAssignedTech || role === "SUPERVIZOR");
   const canClose = incident.status === "COZULDU" && (role === "NOC_OPERATORU" || role === "SUPERVIZOR");
   const canRate = incident.status === "KAPANDI" && !resolution?.ratedAt && (role === "NOC_OPERATORU" || role === "SUPERVIZOR");
@@ -224,6 +238,43 @@ export function IncidentDetailPage() {
             </Card>
           )}
 
+          {/* Case 3.3/5.3/7: Supervizor her zaman manuel atama yapabilir — AI onerisini
+              atlayip dogrudan bir ekip secebilir (orn. AI'in onerdigi ekibi degistirmek istediginde). */}
+          {incident.status === "YENI" && role === "SUPERVIZOR" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Manuel Atama</CardTitle>
+              </CardHeader>
+              <CardBody className="flex flex-col gap-3">
+                <Select label="Saha Ekibi" value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)}>
+                  <option value="" disabled>
+                    Ekip seçin...
+                  </option>
+                  {teams?.map((team) => (
+                    <option key={team.team_id} value={team.team_id}>
+                      {team.name ?? team.team_id.slice(0, 8)} — {team.expertise.join("/") || "genel"} ·{" "}
+                      {team.active_incidents}/{team.max_capacity} {team.available ? "" : "(dolu)"}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  disabled={!selectedTeamId}
+                  loading={manualAssign.isPending}
+                  onClick={() =>
+                    run(
+                      () => manualAssign.mutateAsync(selectedTeamId).then(() => setSelectedTeamId("")),
+                      "Ekip manuel olarak atandı."
+                    )
+                  }
+                >
+                  Seçili Ekibe Ata
+                </Button>
+              </CardBody>
+            </Card>
+          )}
+
           <AssignmentCard incident={incident} />
 
           {canTransition && (
@@ -232,7 +283,7 @@ export function IncidentDetailPage() {
                 <CardTitle>Durum Güncelle</CardTitle>
               </CardHeader>
               <CardBody className="flex flex-col gap-2">
-                {NEXT_STATUS[incident.status].map((next) => (
+                {availableActions.map((next) => (
                   <Button
                     key={next.status}
                     variant="secondary"

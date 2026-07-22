@@ -27,7 +27,7 @@
 | `incident.resolution.rated` | Incident Service | Gamification Service | ✅ RabbitMQ ile otomatik tüketiliyor |
 | `incident.sla.exceeded` | Incident Service | Gamification Service | ✅ cron ile üretiliyor (`sla.scheduler.ts`) + RabbitMQ ile tüketiliyor |
 | `incident.repeated` | Incident Service | Gamification Service | ✅ RabbitMQ ile otomatik tüketiliyor |
-| `incident.parts.supplied` | Incident Service | — (audit) | Bonus/gelecek iyileştirme (durum geçişi `/status` ile yapılıyor, ayrı event yok) |
+| `incident.parts.supplied` | Incident Service | — (audit) | ✅ RabbitMQ'ya yayınlanıyor — case 4.2 tablosu bu geçişin "Kim Yapabilir" hanesini "Sistem" olarak tanımlar; NOC/dispatch parça tedarikini doğruladığında (`PARCA_BEKLENIYOR`→`MUDAHALE_EDILIYOR`) tetiklenir, saha teknisyeni bu geçişi kendi kendine yapamaz (state-machine.ts) |
 | `incident.predicted` | AI Service | — (audit) | Bonus/gelecek iyileştirme (şimdilik `predictions` tablosuna doğrudan yazılıyor) |
 | `team.profile.updated` | Identity Service | AI Service (`team_cache`) | ✅ RabbitMQ ile otomatik tüketiliyor (aio-pika); ayrıca başlangıçta + `/internal/refresh-teams` ile manuel senkron REST pull de mevcut (yedek yol) |
 | `badge.earned` | Gamification Service | Gateway (WebSocket relay → rozeti kazanan personel) | ✅ RabbitMQ'ya yayınlanıyor; **Faz 4:** Gateway'in Socket.IO relay'i ile `user:<user_id>` odasına `badge:earned` olarak iletiliyor, frontend toast gösterip profil/liderlik tablosu cache'ini anında tazeliyor |
@@ -100,7 +100,25 @@ event'i WebSocket ile atanan teknisyene `incident:assigned` olarak iletir.
 { "team_id": "<user_id>", "expertise": ["DONANIM", "ISINMA"], "region": ["Kadikoy"], "lat": 40.99, "lng": 29.02, "updated_at": "..." }
 ```
 
+### `incident.parts.supplied`
+```json
+{ "incident_id": "INC-2026-000123", "team_id": "<team_id>", "confirmed_by": "<noc_user_id>", "confirmed_at": "..." }
+```
+
 ### `audit.log`
+
+`action_type` alanı olay tipine göre değişir; tüm varyantlar merkezi `audit_logs` tablosuna
+(Identity Service) yazılır ve `GET /api/v1/admin/audit-log` ile Admin tarafından görüntülenir:
+
 ```json
 { "user_id": "<user_id>", "action_type": "YETKISIZ_ERISIM_DENEMESI", "timestamp": "...", "ip": "...", "result": "FAILURE", "detail": { "path": "...", "requiredRoles": ["SUPERVIZOR"], "actualRole": "MUSTERI" } }
+```
+```json
+{ "user_id": "<user_id>", "action_type": "IDOR_DENEMESI", "timestamp": "...", "ip": null, "result": "FAILURE", "detail": { "incident_id": "INC-2026-000123", "attempted_by_role": "MUSTERI" } }
+```
+```json
+{ "user_id": "<user_id>", "action_type": "ONCELIK_KRITIK_DEGISIKLIGI", "timestamp": "...", "ip": null, "result": "SUCCESS", "detail": { "incident_id": "INC-2026-000123", "original_priority": "ORTA", "corrected_priority": "KRITIK" } }
+```
+```json
+{ "user_id": "<user_id>", "action_type": "VAKA_KRITIK_DURUM_DEGISIKLIGI", "timestamp": "...", "ip": null, "result": "SUCCESS", "detail": { "incident_id": "INC-2026-000123", "from_status": "MUDAHALE_EDILIYOR", "to_status": "COZULDU", "priority": "KRITIK" } }
 ```

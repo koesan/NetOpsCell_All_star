@@ -1,6 +1,22 @@
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertOctagon, Brain, CheckCircle, Clock, Inbox } from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { useNavigate } from "react-router-dom";
+import { AlertOctagon, Brain, CheckCircle, Clock, Inbox, UserPlus } from "lucide-react";
 import { PageHeader } from "../../components/ui/PageHeader";
+import { Button } from "../../components/ui/Button";
 import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card";
 import { StatTile } from "../../components/ui/StatTile";
 import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States";
@@ -10,6 +26,7 @@ import { OperationsMap } from "../../components/map/OperationsMap";
 import { useIncidents, useStations, useTeams } from "../shared/incidentHooks";
 import { useAiAccuracy, useAiAccuracyByCategory, useDashboardSummary } from "./dashboardHooks";
 import type { FaultType, Priority } from "../../types";
+import { STATUS_LABELS } from "../../lib/statusLabels";
 
 const FAULT_COLORS: Record<FaultType, string> = {
   DONANIM: "#1f2f7a",
@@ -37,6 +54,7 @@ const FAULT_LABELS: Record<FaultType, string> = {
 };
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { data: summary, isLoading, isError, refetch } = useDashboardSummary();
   const { data: accuracy, isError: aiUnavailable } = useAiAccuracy();
   const { data: categoryAccuracy } = useAiAccuracyByCategory();
@@ -67,7 +85,39 @@ export function DashboardPage() {
         <ServiceNotice message="AI Service şu an erişilemiyor: doğruluk metrikleri, ekip katmanı ve otomatik atama geçici olarak devre dışı. Vaka yaşam döngüsü, SLA takibi ve dashboard'un geri kalanı tam çalışır durumda (bağımsızlık ilkesi)." />
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {/* Case 4.4: "KRITIK vaka kirmizi isaretlenir, supervizor panelinde EN USTTE gorunur" —
+          bu yuzden SLA asan aktif vakalar panelin en tepesinde, oncelige gore siralanmis listelenir. */}
+      {summary.sla.exceededActive.length > 0 && (
+        <Card className="mb-6 overflow-hidden border-priority-kritik/30 p-0">
+          <CardHeader className="bg-priority-kritik/5 px-5 pt-4">
+            <CardTitle className="flex items-center gap-1.5 text-priority-kritik">
+              <AlertOctagon className="h-4 w-4" /> SLA Aşmış Aktif Vakalar ({summary.sla.exceededActive.length})
+            </CardTitle>
+          </CardHeader>
+          <CardBody className="p-0">
+            <div className="divide-y divide-navy-50">
+              {summary.sla.exceededActive.map((incident) => (
+                <button
+                  key={incident.id}
+                  onClick={() => navigate(`/operasyon/vakalar/${incident.id}`)}
+                  className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-navy-50/60"
+                >
+                  <div>
+                    <p className="font-mono text-xs font-semibold text-navy-900">{incident.incidentNo}</p>
+                    <p className="text-[11px] text-navy-400">{incident.stationCode} · {STATUS_LABELS[incident.status]}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <FaultTypeBadge faultType={incident.faultType} />
+                    <PriorityBadge priority={incident.priority} />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
           label="SLA Uyum Oranı"
           value={`%${summary.sla.complianceRatePercent}`}
@@ -82,6 +132,13 @@ export function DashboardPage() {
           icon={Brain}
           accent="yellow"
           hint={accuracy ? `${accuracy.total_predictions} tahmin` : "veri bekleniyor"}
+        />
+        <StatTile
+          label="Yanlış Alarm Oranı"
+          value={accuracy ? `%${accuracy.false_alarm_rate_percent}` : "—"}
+          icon={AlertOctagon}
+          accent="amber"
+          hint={accuracy ? `${accuracy.false_alarms} yanlış alarm` : "veri bekleniyor"}
         />
         <StatTile label="Bekleyen Atama" value={summary.pendingAssignmentQueue.length} icon={Clock} accent="navy" />
       </div>
@@ -142,6 +199,32 @@ export function DashboardPage() {
           </CardBody>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Öncelik Trendi (Son 14 Gün)</CardTitle>
+          <span className="text-[11px] text-navy-400">Günlük yeni vaka sayısı, öncelik bazlı</span>
+        </CardHeader>
+        <CardBody>
+          {!summary.priorityTrend || summary.priorityTrend.length === 0 ? (
+            <EmptyState icon={<Inbox className="h-6 w-6 text-navy-300" />} title="Henüz trend verisi yok" />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={summary.priorityTrend}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF0F5" />
+                <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#6b7998" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: "#6b7998" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Area type="monotone" dataKey="KRITIK" stackId="1" stroke={PRIORITY_COLORS.KRITIK} fill={PRIORITY_COLORS.KRITIK} fillOpacity={0.75} />
+                <Area type="monotone" dataKey="YUKSEK" stackId="1" stroke={PRIORITY_COLORS.YUKSEK} fill={PRIORITY_COLORS.YUKSEK} fillOpacity={0.65} />
+                <Area type="monotone" dataKey="ORTA" stackId="1" stroke={PRIORITY_COLORS.ORTA} fill={PRIORITY_COLORS.ORTA} fillOpacity={0.55} />
+                <Area type="monotone" dataKey="DUSUK" stackId="1" stroke={PRIORITY_COLORS.DUSUK} fill={PRIORITY_COLORS.DUSUK} fillOpacity={0.45} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </CardBody>
+      </Card>
 
       <Card className="mt-6">
         <CardHeader>
@@ -237,9 +320,12 @@ export function DashboardPage() {
                       <p className="font-mono text-xs font-semibold text-navy-800">{incident.incidentNo}</p>
                       <p className="text-[11px] text-navy-400">{incident.stationCode}</p>
                     </div>
-                    <div className="flex gap-1.5">
+                    <div className="flex items-center gap-1.5">
                       <FaultTypeBadge faultType={incident.faultType} />
                       <PriorityBadge priority={incident.priority} />
+                      <Button size="sm" variant="secondary" onClick={() => navigate(`/operasyon/vakalar/${incident.id}`)}>
+                        <UserPlus className="h-3.5 w-3.5" /> Ata
+                      </Button>
                     </div>
                   </div>
                 ))}

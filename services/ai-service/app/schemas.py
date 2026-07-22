@@ -114,6 +114,11 @@ class AccuracyResponse(BaseModel):
     total_predictions: int
     misclassifications: int
     accuracy_percent: float
+    # Case 7: "AI dogruluk metrigi: ariza tahmini isabet orani (false alarm orani dahil)".
+    # Yanlis alarm: AI'in bir ariza turu atadigi (recommendation != IZLE) ama operatorun
+    # incelemeden sonra BELIRSIZ'e (tanimlanabilir bir ariza yok) dusurdugu vakalar.
+    false_alarms: int
+    false_alarm_rate_percent: float
 
 
 class CategoryAccuracy(BaseModel):

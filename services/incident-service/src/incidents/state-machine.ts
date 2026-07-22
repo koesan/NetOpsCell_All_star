@@ -16,8 +16,11 @@ const TRANSITIONS: Record<string, TransitionRule> = {
   [`${IncidentStatus.MUDAHALE_EDILIYOR}->${IncidentStatus.PARCA_BEKLENIYOR}`]: {
     allowedRoles: [Role.SAHA_TEKNISYENI, Role.SUPERVIZOR],
   },
+  // Case 4.2 tablosu: bu gecisin "Kim Yapabilir" hanesi "Sistem"dir (teknisyen degil) —
+  // parca tedarigini onceki satirdan (MUDAHALE_EDILIYOR->PARCA_BEKLENIYOR, teknisyen talebi)
+  // farkli olarak NOC/dispatch dogrular; bkz. incidents.service.ts (incident.parts.supplied event'i).
   [`${IncidentStatus.PARCA_BEKLENIYOR}->${IncidentStatus.MUDAHALE_EDILIYOR}`]: {
-    allowedRoles: [Role.SAHA_TEKNISYENI, Role.SUPERVIZOR],
+    allowedRoles: [Role.NOC_OPERATORU, Role.SUPERVIZOR],
   },
   [`${IncidentStatus.MUDAHALE_EDILIYOR}->${IncidentStatus.COZULDU}`]: {
     allowedRoles: [Role.SAHA_TEKNISYENI, Role.SUPERVIZOR],

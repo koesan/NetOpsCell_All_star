@@ -144,13 +144,15 @@ export interface IncidentMessage {
   _id: string;
   incidentId: string;
   senderId: string;
-  senderRole: Role | "SYSTEM";
+  senderRole: Role | "SYSTEM" | "AI";
   senderName?: string;
   content: string;
-  messageType: "TEXT" | "SYSTEM";
+  messageType: "TEXT" | "SYSTEM" | "AI_ANALYSIS";
   status: "SENT" | "DELIVERED" | "READ";
   readBy: { userId: string; readAt: string }[];
   createdAt: string;
+  /** Yalnizca messageType === "AI_ANALYSIS" icin doldurulur. */
+  analysis?: ComplaintAnalysis;
 }
 
 export interface IncidentResolution {
@@ -185,9 +187,18 @@ export interface BadgeCatalogItem {
   condition: string;
 }
 
+export interface PriorityTrendPoint {
+  day: string;
+  KRITIK: number;
+  YUKSEK: number;
+  ORTA: number;
+  DUSUK: number;
+}
+
 export interface DashboardSummary {
   faultTypeDistribution: { faultType: FaultType; count: string }[];
   priorityDistribution: { priority: Priority; count: string }[];
+  priorityTrend: PriorityTrendPoint[];
   sla: {
     complianceRatePercent: number;
     totalResolved: number;
@@ -207,6 +218,8 @@ export interface AiAccuracy {
   total_predictions: number;
   misclassifications: number;
   accuracy_percent: number;
+  false_alarms: number;
+  false_alarm_rate_percent: number;
 }
 
 export interface CategoryAccuracy {

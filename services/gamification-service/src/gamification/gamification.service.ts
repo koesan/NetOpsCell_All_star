@@ -96,7 +96,7 @@ export class GamificationService {
         fastResponseCount: stats.fastResponseCount + (payload.within_half_sla ? 1 : 0),
         criticalWithinSlaCount: stats.criticalWithinSlaCount + (payload.priority === "KRITIK" && payload.within_sla ? 1 : 0),
         noRepeatStreak: stats.noRepeatStreak + 1,
-        dailyResolvedDate: stats.dailyResolvedDate === today ? today : today,
+        dailyResolvedDate: today,
         dailyResolvedCount: stats.dailyResolvedDate === today ? stats.dailyResolvedCount + 1 : 1,
         resolvedByType,
       }

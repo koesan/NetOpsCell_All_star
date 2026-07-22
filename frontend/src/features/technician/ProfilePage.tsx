@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Award, CheckCircle2, Lock, Star, Target, TrendingUp, Trophy } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card";
 import { LoadingState } from "../../components/ui/States";
+import { cn } from "../../lib/cn";
 import { useBadgeCatalog, useLeaderboard, useMyProfile } from "../shared/gamificationHooks";
 import { LEVEL_COLORS, LEVEL_LABELS, levelProgress } from "./levelUtils";
 
@@ -11,13 +13,18 @@ export function ProfilePage() {
   const { user } = useAuth();
   const { data: profile, isLoading } = useMyProfile(user?.id);
   const { data: badgeCatalog } = useBadgeCatalog();
-  const { data: leaderboard } = useLeaderboard("daily");
+  // Case 6.4: profil ekraninda hem gunluk hem haftalik siralama gosterilmelidir
+  const { data: dailyLeaderboard } = useLeaderboard("daily");
+  const { data: weeklyLeaderboard } = useLeaderboard("weekly");
+  const [period, setPeriod] = useState<"daily" | "weekly">("daily");
 
   if (isLoading || !profile) return <LoadingState label="Profil yükleniyor..." />;
 
   const progress = levelProgress(profile.totalPoints);
   const earnedSet = new Set(profile.badges);
-  const myRank = leaderboard?.find((l) => l.userId === user?.id)?.rank;
+  const myDailyRank = dailyLeaderboard?.find((l) => l.userId === user?.id)?.rank;
+  const myWeeklyRank = weeklyLeaderboard?.find((l) => l.userId === user?.id)?.rank;
+  const leaderboard = period === "daily" ? dailyLeaderboard : weeklyLeaderboard;
 
   return (
     <div>
@@ -37,11 +44,18 @@ export function ProfilePage() {
                 <p className="text-lg font-semibold text-navy-950">{LEVEL_LABELS[profile.level]} Seviye</p>
                 <p className="text-sm text-navy-400">{profile.totalPoints} puan · {profile.resolvedCount} çözülen vaka</p>
               </div>
-              {myRank && (
-                <div className="flex items-center gap-1.5 rounded-full bg-brand-yellow/20 px-3 py-1.5 text-xs font-semibold text-navy-900">
-                  <Trophy className="h-3.5 w-3.5" /> #{myRank} bugün
-                </div>
-              )}
+              <div className="flex flex-col items-end gap-1.5">
+                {myDailyRank && (
+                  <div className="flex items-center gap-1.5 rounded-full bg-brand-yellow/20 px-3 py-1 text-xs font-semibold text-navy-900">
+                    <Trophy className="h-3.5 w-3.5" /> #{myDailyRank} bugün
+                  </div>
+                )}
+                {myWeeklyRank && (
+                  <div className="flex items-center gap-1.5 rounded-full bg-navy-100 px-3 py-1 text-xs font-semibold text-navy-700">
+                    <Trophy className="h-3.5 w-3.5" /> #{myWeeklyRank} bu hafta
+                  </div>
+                )}
+              </div>
             </div>
 
             {progress.nextThreshold && (
@@ -72,7 +86,21 @@ export function ProfilePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Günlük Liderlik</CardTitle>
+            <CardTitle>Liderlik</CardTitle>
+            <div className="flex rounded-lg bg-navy-50 p-0.5">
+              {(["daily", "weekly"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-[11px] font-medium transition-all",
+                    period === p ? "bg-white text-navy-900 shadow-soft" : "text-navy-400"
+                  )}
+                >
+                  {p === "daily" ? "Günlük" : "Haftalık"}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardBody className="flex flex-col gap-2">
             {leaderboard?.slice(0, 5).map((entry) => (

@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus, Injectable, Logger } from "@nestjs/common";
 import { MongoService } from "./mongo.service";
-import { MessageDocument } from "./message.schema";
+import { ChatComplaintAnalysis, MessageDocument } from "./message.schema";
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_MESSAGES = 20; // kullanici basina, vaka basina, dakikada
@@ -73,6 +73,48 @@ export class MessagingService {
       });
     } catch (err) {
       this.logger.warn(`Sistem mesaji yazilamadi (akis etkilenmez): ${(err as Error).message}`);
+    }
+  }
+
+  /** Musterinin sikayet metnini ve Gemini on analizini vaka acilir acilmaz thread'e
+   * bir "konusma" gibi duser: once musterinin yazdigi orijinal metin (TEXT), hemen
+   * ardindan AI'in yapilandirilmis yanit balonu (AI_ANALYSIS) — boylece NOC/teknisyen
+   * hicbir ekstra tiklama yapmadan "buyuk ihtimalle X alaninda sorun var" tarzi analizi
+   * mesaj akisinda gorur. Mongo erisilemezse sessizce atlanir (akis bloke olmaz). */
+  async seedComplaintThread(
+    incidentId: string,
+    customerId: string,
+    customerNote: string,
+    analysis: ChatComplaintAnalysis
+  ): Promise<void> {
+    try {
+      await this.mongoService.messagesCollection().insertMany([
+        {
+          incidentId,
+          senderId: customerId,
+          senderRole: "MUSTERI",
+          senderName: "Müşteri",
+          content: customerNote,
+          messageType: "TEXT",
+          status: "SENT",
+          readBy: [],
+          createdAt: new Date(),
+        },
+        {
+          incidentId,
+          senderId: "ai-service",
+          senderRole: "AI",
+          senderName: "AI Ön Analiz",
+          content: analysis.olasi_neden,
+          messageType: "AI_ANALYSIS",
+          status: "SENT",
+          readBy: [],
+          createdAt: new Date(Date.now() + 500),
+          analysis,
+        },
+      ]);
+    } catch (err) {
+      this.logger.warn(`Sikayet/AI analiz mesaji yazilamadi (akis etkilenmez): ${(err as Error).message}`);
     }
   }
 
