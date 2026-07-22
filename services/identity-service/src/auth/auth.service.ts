@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { IsNull, LessThan, Repository } from "typeorm";
 import * as bcrypt from "bcryptjs";
@@ -15,6 +15,7 @@ import { VerifyOtpDto } from "./dto/verify-otp.dto";
 import { LoginDto } from "./dto/login.dto";
 import { AuditService } from "../audit/audit.service";
 import { signAccessToken } from "./jwt.util";
+import { TelegramService } from "./telegram.service";
 
 const OTP_TTL_MINUTES = 5;
 const ACCOUNT_LOCK_MAX_ATTEMPTS = parseInt(process.env.ACCOUNT_LOCK_MAX_ATTEMPTS || "5", 10);
@@ -27,20 +28,35 @@ export interface TokenPair {
   expiresIn: string;
 }
 
+export interface RegisterResult {
+  message: string;
+  channel: "TELEGRAM" | "SIMULATED";
+  linked: boolean;
+  /** Yalnizca linked=false iken doldurulur: musterinin Telegram'da acmasi gereken derin baglanti. */
+  linkUrl?: string;
+}
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(RefreshToken) private readonly refreshTokenRepo: Repository<RefreshToken>,
     @InjectRepository(OtpCode) private readonly otpRepo: Repository<OtpCode>,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly telegramService: TelegramService
   ) {}
 
   private normalizeGsm(gsm: string): string {
     return gsm.startsWith("0") ? gsm : `0${gsm}`;
   }
 
-  async register(dto: RegisterDto): Promise<{ message: string; otpHint?: string }> {
+  /** Musteri kaydi + OTP tetikleme. Gercek teslimat: Telegram Bot API (bkz. telegram.service.ts).
+   * Kod HICBIR KOSULDA yanitta veya UI'da donmez — yalnizca baglanan Telegram sohbetine gercekten
+   * gonderilir. Musteri henuz Telegram baglamamissa OTP gonderilMEZ, bunun yerine bir tek-seferlik
+   * baglanti linki (deep link) doner; frontend bunu gosterip baglanti tamamlanana kadar bekler. */
+  async register(dto: RegisterDto): Promise<RegisterResult> {
     const gsm = this.normalizeGsm(dto.gsm);
 
     // Bu uc nokta hem ilk kayit hem de mevcut (ACTIVE) musterinin OTP ile giris yapmak
@@ -60,19 +76,42 @@ export class AuthService {
       await this.userRepo.save(user);
     }
 
-    const isSimulated = (process.env.OTP_MODE || "SIMULATED") === "SIMULATED";
-    const code = isSimulated ? process.env.OTP_FIXED_CODE || "1234" : String(Math.floor(1000 + Math.random() * 9000));
+    if (this.telegramService.isConfigured()) {
+      const link = await this.telegramService.getOrCreateLink(gsm);
+      if (!link.chatId) {
+        return {
+          message: "Devam etmek icin Telegram hesabinizi baglayin.",
+          channel: "TELEGRAM",
+          linked: false,
+          linkUrl: this.telegramService.buildDeepLink(link.linkToken),
+        };
+      }
 
-    await this.otpRepo.insert({
-      gsm,
-      code,
-      expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
-    });
+      const code = String(Math.floor(1000 + Math.random() * 9000));
+      await this.otpRepo.insert({ gsm, code, expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000) });
+      const delivered = await this.telegramService.sendOtp(link.chatId, code);
+      if (!delivered) {
+        throw new BadRequestException("Telegram'a mesaj gonderilemedi. Lutfen daha sonra tekrar deneyin.");
+      }
+      return { message: "Dogrulama kodu Telegram'a gonderildi.", channel: "TELEGRAM", linked: true };
+    }
 
-    return {
-      message: "OTP kodu gonderildi.",
-      ...(isSimulated ? { otpHint: `Simulasyon modu: sabit kod ${code}` } : {}),
-    };
+    // Telegram yapilandirilmamis (TELEGRAM_BOT_TOKEN yok): yerel gelistirme/test icin
+    // sabit kodlu simulasyon fallback'i. Kod BILINCLI OLARAK yanitta DONMEZ (yalnizca
+    // sunucu logunda goruntulenir) — boylece prod/demo davranisiyla (kod hicbir zaman
+    // istemciye sizmaz) UI/API sozlesmesi tutarli kalir. Bkz. README "Telegram OTP Kurulumu".
+    const code = process.env.OTP_FIXED_CODE || "1234";
+    await this.otpRepo.insert({ gsm, code, expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000) });
+    this.logger.warn(
+      `[SIMULASYON] Telegram yapilandirilmamis — OTP kodu sadece bu log satirinda goruntuleniyor: gsm=${gsm} code=${code}`
+    );
+    return { message: "OTP kodu gonderildi.", channel: "SIMULATED", linked: true };
+  }
+
+  /** Frontend'in "Telegram'i baglayin" ekraninda kisa araliklarla cagirdigi durum kontrolu. */
+  async getTelegramLinkStatus(rawGsm: string): Promise<{ linked: boolean }> {
+    const gsm = this.normalizeGsm(rawGsm);
+    return { linked: await this.telegramService.isLinked(gsm) };
   }
 
   async verifyOtp(dto: VerifyOtpDto, ip: string | null): Promise<TokenPair> {

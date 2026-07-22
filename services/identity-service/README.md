@@ -22,12 +22,19 @@ bulunan bir hatanın düzeltmesi — bkz. Bölüm 21.2).
 — geçerli token, süresi dolmuş token, `alg:none` saldırısı, farklı issuer ile token karışıklığı ve
 bozulmuş imza senaryoları test edilir (`npm test`, CI'da otomatik çalışır).
 
+**Faz 8:** Gerçek OTP teslimatı — Telegram Bot API (`src/auth/telegram.service.ts`). Kod hiçbir
+koşulda API yanıtında/UI'da dönmez. Bot token tanımlı değilse (`TELEGRAM_BOT_TOKEN`) sabit kodlu
+simülasyon fallback'i devreye girer (yalnızca sunucu logunda görünür). Ayrıca: refresh token
+reuse-detection'da canlı testte bulunan kritik bir açık (`IsNull()` operatörü eksikliği) düzeltildi
+— bkz. kök README "Güvenlik" bölümü ve `src/auth/auth.service.spec.ts`.
+
 ## Endpoint'ler (bkz. ARCHITECTURE.md Bölüm 6.1)
 
 | Method | Endpoint | Açıklama |
 |---|---|---|
 | GET | `/health` | Servis sağlık kontrolü |
-| POST | `/api/v1/auth/register` | Müşteri kaydı |
+| POST | `/api/v1/auth/register` | Müşteri kaydı + OTP tetikleme (Telegram'a gerçek gönderim; henüz bağlanmamışsa bağlantı linki döner) |
+| GET | `/api/v1/auth/telegram/link-status` | Telegram bağlantısının tamamlanıp tamamlanmadığını sorgular (frontend polling) |
 | POST | `/api/v1/auth/otp/verify` | OTP doğrulama |
 | POST | `/api/v1/auth/login` | Personel/Süpervizör/Admin girişi |
 | POST | `/api/v1/auth/refresh` | Token yenileme |

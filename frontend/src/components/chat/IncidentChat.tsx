@@ -136,7 +136,7 @@ export function IncidentChat({ messages, currentUserId, onSend, disabled, height
                   <div className="max-w-[85%] rounded-2xl rounded-tl-md border border-brand-yellow/50 bg-brand-yellow/10 px-3.5 py-2.5 shadow-sm">
                     <div className="mb-1 flex items-center gap-1.5">
                       <Sparkles className="h-3 w-3 text-navy-700" />
-                      <span className="text-[11px] font-semibold text-navy-800">AI Ön Analiz</span>
+                      <span className="text-[11px] font-semibold text-navy-800">Ön Analiz</span>
                       {analysis && (
                         <span className="rounded-full bg-navy-900 px-1.5 py-px text-[9px] font-semibold text-brand-yellow">
                           {analysis.muhtemel_alan}
@@ -152,10 +152,7 @@ export function IncidentChat({ messages, currentUserId, onSend, disabled, height
                         <span className="font-semibold">Öneri:</span> {analysis.oneri}
                       </p>
                     )}
-                    <p className="mt-1 flex items-center justify-between text-[10px] text-navy-400">
-                      <span>güven %{Math.round((analysis?.guven ?? 0) * 100)} · bilgilendirme amaçlıdır</span>
-                      <span>{format(createdAt, "HH:mm")}</span>
-                    </p>
+                    <p className="mt-1 text-right text-[10px] text-navy-400">{format(createdAt, "HH:mm")}</p>
                   </div>
                 </div>
               </div>

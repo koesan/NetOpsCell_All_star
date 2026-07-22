@@ -219,7 +219,7 @@ export function NewIncidentPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="flex items-center gap-1.5 text-xs font-semibold text-navy-900">
-                        <Sparkles className="h-3.5 w-3.5 text-navy-700" /> AI Sorun Tahmini
+                        <Sparkles className="h-3.5 w-3.5 text-navy-700" /> Ön Analiz
                       </p>
                       <FaultTypeBadge faultType={analysis.muhtemel_alan} />
                     </div>

@@ -109,6 +109,35 @@ Analiz" düğmesi hata mesajı döndürür; bildirim/atama akışının hiçbir 
 çıktısı yalnızca bilgilendirme amaçlıdır — telemetri tabanlı ML sınıflandırıcısının ve atama
 kararlarının yerine geçmez (prompt-injection yüzeyi de bu izolasyonla sınırlandırılmıştır).
 
+### Telegram OTP Kurulumu (Gerçek Doğrulama Kodu Teslimatı)
+
+Müşteri girişi artık **gerçekten çalışan** bir kanaldan doğrulama kodu alır: kod hiçbir zaman
+API yanıtında veya arayüzde görünmez, yalnızca müşterinin bağladığı Telegram sohbetine
+gönderilir. SMS (Twilio vb.) ücretli bir hesap, WhatsApp Business API ise Meta onayı
+gerektirdiğinden; **Telegram Bot API** ücretsiz ve iki dakikada kurulabilir olduğu için tercih
+edildi. Sistem herhangi bir genel-erişilebilir URL/webhook gerektirmez — long-polling ile
+çalışır, Docker Compose gibi kapalı ağlarda da sorunsuz çalışır.
+
+**Akış:** Müşteri telefon numarasını girer → Telegram'a henüz bağlı değilse tek seferlik bir
+bağlantı düğmesi gösterilir → Telegram'da "Başlat"a basar → uygulama otomatik olarak devam eder
+→ doğrulama kodu **gerçekten** o sohbete gönderilir → müşteri kodu girer.
+
+Kurulum:
+
+1. Telegram'da [@BotFather](https://t.me/BotFather)'a `/newbot` yazın, bir isim ve kullanıcı adı
+   verin (örn. `NetOpsCellDemoBot`); size bir **bot token** verecektir.
+2. Token'ı tek satır olarak şu dosyaya yazın: `secrets/telegram_bot_token.txt`
+3. Bot kullanıcı adını (başındaki `@` olmadan) `docker-compose.yml`'de veya ortamda
+   `TELEGRAM_BOT_USERNAME` olarak tanımlayın (örn. `TELEGRAM_BOT_USERNAME=NetOpsCellDemoBot
+   docker compose up -d identity-service`).
+4. `docker compose up -d --build identity-service` ile servisi yeniden başlatın.
+
+Token tanımlanmazsa sistem **yerel geliştirme için** sabit kodlu (`1234`) bir simülasyon
+fallback'ine düşer — ama bu modda dahi kod **API yanıtında asla dönmez**, yalnızca sunucu
+logunda görünür (`docker compose logs identity-service | grep SIMULASYON`); böylece "kod
+UI'da görünmesin" kuralı her iki modda da korunur. Doğrulama (case gereği) her zaman
+zorunludur — Telegram bağlı olmadan veya doğru kod girilmeden giriş yapılamaz.
+
 ### Önceliklendirme Nasıl Yapılıyor? (case 4.3)
 
 Öncelik ataması **AI güdümlüdür ve case 4.3'ü birebir uygular**: "AI etkilenen kullanıcı sayısı
@@ -193,6 +222,25 @@ Yetkiler yalnızca menüde gizlenmez; her endpoint sunucu tarafında rol guard'�
 kontrolüyle korunur (yetkisiz istek → 403 + audit log).
 
 ## Proje Durumu
+
+**Faz 8 — Gerçek Telegram OTP, Gemini Kalitesi ve Bağımsızlık Doğrulaması:**
+
+- 📱 **Gerçek OTP teslimatı (Telegram Bot API):** Müşteri artık gerçekten Telegram'a gönderilen
+  bir kodla giriş yapıyor; kod hiçbir koşulda API yanıtında veya arayüzde görünmüyor (yalnızca
+  yapılandırılmamışsa sunucu logunda, geliştirme kolaylığı için). Webhook/genel-erişilebilir
+  URL gerektirmeyen long-polling mimarisi. Bkz. "Telegram OTP Kurulumu".
+- 🎯 **Gemini prompt kalitesi iyileştirildi:** Model artık jenerik kurumsal cümleler yerine
+  somut teknik hipotezler üretiyor (örn. "elektrik kesintisi", "soğutma sistemi arızası") ve
+  uygulanabilir öneriler veriyor; canlı test edildi.
+- ✅ **Liderlik tablosu zenginleştirildi:** Demo senaryosu artık 3 farklı teknisyeni tam yaşam
+  döngüsünden geçiriyor (farklı puan/rozet/değerlendirme kombinasyonlarıyla) — tek kişilik değil,
+  gerçekçi bir liderlik tablosu.
+- ✅ **Bağımsızlık ilkesi 4 servisin her biri için ayrı ayrı canlı doğrulandı:** AI, Gamification,
+  Identity, Incident — her biri tek tek durduruldu; her durumda geri kalan sistem çalışmaya devam
+  etti (Identity kapalıyken bile mevcut JWT'ler RS256 public key ile yerel doğrulandığı için
+  incident/dashboard işlemleri kesintisiz sürdü). Gamification kapalıyken çözülen bir vaka
+  kuyrukta bekleyip servis geri gelince otomatik işlendi (durability testi).
+- ✅ Gerçek Turkcell marka logosu kullanılıyor (yer tutucu değil).
 
 **Faz 7 — Uçtan Uca Denetim ve Kritik Güvenlik Düzeltmesi:**
 
@@ -361,6 +409,11 @@ JWT RS256 anahtar çiftini ve Grafana admin şifresini üretir. Bu dizin repoya 
 > **Gemini (opsiyonel):** Müşteri şikayeti AI ön analizi için kendi Gemini anahtarınızı
 > `secrets/gemini_api_key.txt` dosyasına yazın (bkz. yukarıda "Gemini API Anahtarı Kurulumu").
 > Boş bırakılırsa sistem tam çalışır, yalnızca bu özellik kapalı kalır.
+>
+> **Telegram (önerilir):** Müşteri OTP'sinin gerçekten teslim edilmesi için
+> `secrets/telegram_bot_token.txt` dosyasına bot token'ınızı yazın (bkz. "Telegram OTP
+> Kurulumu"). Boş bırakılırsa yerel geliştirme için sabit kodlu (`1234`, yalnızca sunucu
+> logunda) bir simülasyon fallback'i devreye girer.
 
 **2. Sistemi ayağa kaldır:**
 
@@ -410,7 +463,7 @@ ve haritada canlı izlenen YOLDA vakası:
 | Saha Teknisyeni (Donanım/Isınma) | saha.donanim@netopscell.com | Demo123! |
 | Saha Teknisyeni (Bağlantı/Yazılım) | saha.baglanti@netopscell.com | Demo123! |
 | Saha Teknisyeni (Güç Kesintisi) | saha.guc.kesintisi@netopscell.com | Demo123! |
-| Müşteri | 05551234567 | OTP: 1234 (simülasyon) |
+| Müşteri | 05551234567 | Telegram Bot ile OTP (yapılandırılmamışsa: sabit kod `1234`, yalnızca sunucu logunda görünür — bkz. aşağıda "Telegram OTP Kurulumu") |
 
 ## Servis Dokümantasyonu
 

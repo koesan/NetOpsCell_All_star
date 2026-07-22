@@ -7,8 +7,9 @@
 #      kesintisi, asiri isinma, baglanti kaybi, donanim, yazilim ve 1 normal
 #      olcum — normal olcum AI tarafindan IZLE'ye ayrilir, vaka acilmaz).
 #   2. Orta guvenli tahminler NOC operatoru tarafindan onaylanip AI atamasina verilir.
-#   3. Bir vaka tam yasam dongusunden gecirilir (YOLDA -> MUDAHALE -> COZULDU ->
-#      KAPANDI -> 5 yildiz) — puan/rozet/liderlik tablosu dolar.
+#   3. UC FARKLI TEKNISYEN tam yasam dongusunden gecirilir (YOLDA -> MUDAHALE ->
+#      COZULDU -> KAPANDI -> yildiz degerlendirmesi) — liderlik tablosu ve puan
+#      dagilimi tek kisilik degil, gercekci sekilde birden fazla kullanicidan olusur.
 #   4. Bir KRITIK vaka YOLDA durumunda birakilir — haritada CANLI arac akisi izlenir.
 #   5. Saha <-> NOC arasinda WhatsApp tarzi mesajlasma ornegi olusturulur.
 #
@@ -20,8 +21,12 @@ set -euo pipefail
 GW="${GATEWAY_URL:-http://localhost:8080}"
 PASS="Demo123!"
 
-say()  { printf "\033[1;34m[demo]\033[0m %s\n" "$*"; }
-fail() { printf "\033[1;31m[hata]\033[0m %s\n" "$*"; exit 1; }
+# DIKKAT: say/fail HER ZAMAN stderr'e yazar (>&2) — bircok yerde $(login ...) gibi komut
+# ikamesi (command substitution) icinde cagrilirlar; stdout'a yazsalardi bu durum mesaji
+# yakalanan token/deger ile birlesip veriyi bozardi (canli testte tam olarak bu hataya
+# rastlandi: rate-limit retry mesaji token'in icine karisip Authorization header'ini bozdu).
+say()  { printf "\033[1;34m[demo]\033[0m %s\n" "$*" >&2; }
+fail() { printf "\033[1;31m[hata]\033[0m %s\n" "$*" >&2; exit 1; }
 
 json() { python3 -c "import json,sys;d=json.load(sys.stdin);print(eval(sys.argv[1]))" "$2" 2>/dev/null <<<"$1" || true; }
 
@@ -34,12 +39,30 @@ login() { # $1=email -> access token
     echo "${TOKEN_CACHE[$1]}"
     return
   fi
-  local resp token
-  resp=$(curl -sf -X POST "$GW/api/v1/auth/login" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$1\",\"password\":\"$PASS\"}") || fail "Giris basarisiz: $1 (identity seed calisti mi? / rate limit icin 1 dk bekleyin)"
-  token=$(json "$resp" "d['data']['accessToken']")
-  TOKEN_CACHE[$1]="$token"
-  echo "$token"
+  # Bu demo tek kosuda 8'e yakin farkli hesapla giris yapar (musteri + NOC + Supervizor +
+  # 3 teknisyen); Gateway'in brute-force korumasi (5 giris/dk/IP) case 10 geregi bilinclidir
+  # ve gevsetilmez — bunun yerine 429 alindiginda kisa bir bekleme ile otomatik tekrar denenir
+  # (gercek bir istemcinin yapacagi gibi).
+  local attempt resp token http_code
+  for attempt in 1 2 3 4 5; do
+    resp=$(curl -s -w '\n%{http_code}' -X POST "$GW/api/v1/auth/login" -H 'Content-Type: application/json' \
+      -d "{\"email\":\"$1\",\"password\":\"$PASS\"}")
+    http_code=$(echo "$resp" | tail -1)
+    resp=$(echo "$resp" | sed '$d')
+    if [ "$http_code" = "200" ]; then
+      token=$(json "$resp" "d['data']['accessToken']")
+      TOKEN_CACHE[$1]="$token"
+      echo "$token"
+      return
+    fi
+    if [ "$http_code" = "429" ]; then
+      say "  ($1 icin rate limit — 15sn bekleyip tekrar denenecek, deneme $attempt/5)"
+      sleep 15
+      continue
+    fi
+    fail "Giris basarisiz: $1 (HTTP $http_code) — identity seed calisti mi?"
+  done
+  fail "Giris basarisiz: $1 (rate limit 5 denemede asilamadi)"
 }
 
 telemetry() { # $1=token $2=json-body -> response
@@ -163,6 +186,57 @@ if [ -n "$ISINMA_ID" ] && [ -n "$ISINMA_TEAM" ]; then
   fi
 fi
 
+# --- 4b. Tam yasam dongusu: Bakirkoy DONANIM vakasi (Burak) — 4 yildiz, gecici cozum ---
+DONANIM_ID=$(pick "BTS-IST-005" "id")
+DONANIM_TEAM=$(pick "BTS-IST-005" "assignedTeamName")
+if [ -n "$DONANIM_ID" ] && [ -n "$DONANIM_TEAM" ]; then
+  TECH_EMAIL=$(tech_email "$DONANIM_TEAM")
+  if [ -n "$TECH_EMAIL" ]; then
+    say "Tam yasam dongusu: Bakirkoy donanim vakasi ($DONANIM_TEAM ekibi)"
+    TECH=$(login "$TECH_EMAIL")
+    auth_tech=(-H "Authorization: Bearer $TECH" -H 'Content-Type: application/json')
+    auth_noc=(-H "Authorization: Bearer $NOC" -H 'Content-Type: application/json')
+    curl -sf -X PATCH "$GW/api/v1/incidents/$DONANIM_ID/status" "${auth_tech[@]}" -d '{"status":"YOLDA"}' >/dev/null
+    curl -sf -X PATCH "$GW/api/v1/incidents/$DONANIM_ID/status" "${auth_tech[@]}" -d '{"status":"MUDAHALE_EDILIYOR"}' >/dev/null
+    curl -sf -X POST "$GW/api/v1/incidents/$DONANIM_ID/messages" "${auth_tech[@]}" -d '{"content":"RF karti asiri isinmis, gecici olarak sogutup devreye aldim. Kalici degisim icin parca talep edecegim."}' >/dev/null
+    curl -sf -X POST "$GW/api/v1/incidents/$DONANIM_ID/resolution" "${auth_tech[@]}" \
+      -d '{"resolutionNote":"RF karti gecici olarak sogutuldu ve yeniden devreye alindi. Kalici cozum icin yedek kart siparisi verildi, takip vakasi acilabilir."}' >/dev/null
+    curl -sf -X PATCH "$GW/api/v1/incidents/$DONANIM_ID/status" "${auth_noc[@]}" -d '{"status":"KAPANDI"}' >/dev/null
+    curl -sf -X POST "$GW/api/v1/incidents/$DONANIM_ID/resolution/rate" "${auth_noc[@]}" -d '{"rating":4,"isPermanent":false}' >/dev/null
+    say "  -> COZULDU + KAPANDI + 4 yildiz (gecici cozum, kalici puan bonusu yok)"
+  fi
+fi
+
+# --- 4c. Tam yasam dongusu: Maslak YAZILIM vakasi (Selin) — hizli mudahale + 5 yildiz ---
+YAZILIM_ID=$(pick "BTS-IST-002" "id")
+YAZILIM_TEAM=$(pick "BTS-IST-002" "assignedTeamName")
+if [ -z "$YAZILIM_ID" ]; then
+  # Bu telemetri VAKA_AC bandinda kalmis olabilir (NOC onayi bekliyor); tekrar dene.
+  for ID in $(json "$INCIDENTS" "'\n'.join(i['id'] for i in d['data'] if i['stationCode']=='BTS-IST-002' and i['status']=='YENI')"); do
+    curl -sf -X POST "$GW/api/v1/incidents/$ID/confirm" -H "Authorization: Bearer $NOC" >/dev/null || true
+  done
+  sleep 1
+  INCIDENTS2=$(curl -sf "$GW/api/v1/incidents" -H "Authorization: Bearer $NOC")
+  YAZILIM_ID=$(json "$INCIDENTS2" "next((i['id'] for i in d['data'] if i['stationCode']=='BTS-IST-002' and i['status'] not in ('COZULDU','KAPANDI')), '')")
+  YAZILIM_TEAM=$(json "$INCIDENTS2" "next((i['assignedTeamName'] for i in d['data'] if i['stationCode']=='BTS-IST-002' and i['status'] not in ('COZULDU','KAPANDI')), '')")
+fi
+if [ -n "$YAZILIM_ID" ] && [ -n "$YAZILIM_TEAM" ]; then
+  TECH_EMAIL=$(tech_email "$YAZILIM_TEAM")
+  if [ -n "$TECH_EMAIL" ]; then
+    say "Tam yasam dongusu: Maslak yazilim vakasi ($YAZILIM_TEAM ekibi) — hizli mudahale"
+    TECH=$(login "$TECH_EMAIL")
+    auth_tech=(-H "Authorization: Bearer $TECH" -H 'Content-Type: application/json')
+    auth_noc=(-H "Authorization: Bearer $NOC" -H 'Content-Type: application/json')
+    curl -sf -X PATCH "$GW/api/v1/incidents/$YAZILIM_ID/status" "${auth_tech[@]}" -d '{"status":"YOLDA"}' >/dev/null
+    curl -sf -X PATCH "$GW/api/v1/incidents/$YAZILIM_ID/status" "${auth_tech[@]}" -d '{"status":"MUDAHALE_EDILIYOR"}' >/dev/null
+    curl -sf -X POST "$GW/api/v1/incidents/$YAZILIM_ID/resolution" "${auth_tech[@]}" \
+      -d '{"resolutionNote":"Baz istasyonu yazilimi uzaktan yeniden baslatildi, konfigurasyon dosyasi guncellendi. Aralikli hata tekrarlanmadi."}' >/dev/null
+    curl -sf -X PATCH "$GW/api/v1/incidents/$YAZILIM_ID/status" "${auth_noc[@]}" -d '{"status":"KAPANDI"}' >/dev/null
+    curl -sf -X POST "$GW/api/v1/incidents/$YAZILIM_ID/resolution/rate" "${auth_noc[@]}" -d '{"rating":5,"isPermanent":true}' >/dev/null
+    say "  -> COZULDU + KAPANDI + 5 yildiz + hizli mudahale bonusu"
+  fi
+fi
+
 # --- 5. Canli harita demosu: KRITIK Kadikoy vakasini YOLDA'da birak ----------
 GUC_ID=$(pick "BTS-IST-010" "id")
 GUC_TEAM=$(pick "BTS-IST-010" "assignedTeamName")
@@ -203,4 +277,5 @@ say "  Musteri:     05551234567 / OTP 1234  -> vakalarim + yeni ariza bildir"
 say "  NOC:         noc@netopscell.com / $PASS -> Operasyon Merkezi haritasi (canli arac!)"
 say "  Supervizor:  supervizor@netopscell.com / $PASS -> dashboard + AI dogruluk + SLA"
 say "  Teknisyen:   saha.donanim@netopscell.com / $PASS -> vakalarim + rota + profil/rozet"
-say "  Liderlik tablosu ve rozetler icin: teknisyen profil sayfasi"
+say "  Liderlik tablosunda 3 teknisyen puanli gorunur: Ayse (isinma, 5*), Burak (donanim, 4*"
+say "  gecici), Selin (yazilim, 5* + hizli mudahale bonusu) -> operasyon/liderlik"

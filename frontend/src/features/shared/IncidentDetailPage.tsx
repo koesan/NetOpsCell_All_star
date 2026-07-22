@@ -382,17 +382,12 @@ export function IncidentDetailPage() {
                 {incident.complaintAnalysis && (
                   <div className="rounded-xl border border-brand-yellow/50 bg-brand-yellow/10 p-3.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold text-navy-900">Gemini Ön Analizi</p>
+                      <p className="text-xs font-semibold text-navy-900">Ön Analiz</p>
                       <FaultTypeBadge faultType={incident.complaintAnalysis.muhtemel_alan} />
                     </div>
                     <p className="mt-1.5 text-xs leading-relaxed text-navy-700">{incident.complaintAnalysis.olasi_neden}</p>
                     <p className="mt-1 text-xs leading-relaxed text-navy-600">
                       <span className="font-semibold">Öneri:</span> {incident.complaintAnalysis.oneri}
-                    </p>
-                    <p className="mt-1.5 text-[10px] text-navy-400">
-                      güven %{Math.round((incident.complaintAnalysis.guven ?? 0) * 100)}
-                      {incident.complaintAnalysis.model ? ` · ${incident.complaintAnalysis.model}` : ""} — bilgilendirme
-                      amaçlıdır, telemetri tabanlı ML sınıflandırmasının yerine geçmez
                     </p>
                   </div>
                 )}

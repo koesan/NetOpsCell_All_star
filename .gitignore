@@ -35,9 +35,15 @@ gateway/keys/
 # Docker
 *.pid
 
-# Case dokumani ve ic dokumantasyon (repoya dahil edilmez)
-/docs/
-/CodeNight_FINAL_NetOpsCell_Case.pdf
+# docs/ altindaki agir/ilgisiz materyal repoya dahil edilmez (GB'larca model agirligi,
+# 167MB'lik ham GIS verisi vb.) — ANCAK ARCHITECTURE.md (case degerlendirmesinin "tek referans
+# kaynagi" olarak README'de defalarca atif yapilan dosya) BILINCLI OLARAK ISTISNA: onceki
+# .gitignore kurali (`/docs/`) bu dosyayi da disariya birakiyordu — repoda hic yer almiyordu,
+# bu bir hataydi ve duzeltildi (bkz. ARCHITECTURE.md Bolum 25).
+/docs/Raw/
+/docs/Raw.zip
+/docs/telecom_llm/
+/docs/CodeNight_FINAL_NetOpsCell_Case.pdf
 
 # Claude Code yerel oturum durumu
 /.claude/
