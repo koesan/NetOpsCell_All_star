@@ -6,6 +6,7 @@ import { Role } from "../common/enums/enums";
 export interface AccessTokenPayload {
   sub: string;
   role: Role;
+  name?: string;
   expertise?: string[];
   region?: string[];
 }

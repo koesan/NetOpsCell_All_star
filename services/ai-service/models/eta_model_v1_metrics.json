@@ -1,0 +1,27 @@
+{
+  "model_version": "v1",
+  "task": "resolution_time_regression",
+  "selected_model": "Ridge",
+  "cross_validation": {
+    "Ridge": {
+      "mean_mae_minutes": 34.547216512928586,
+      "std": 1.7642913582953594
+    },
+    "RandomForestRegressor": {
+      "mean_mae_minutes": 35.08202860405274,
+      "std": 1.5965117225794327
+    },
+    "GradientBoostingRegressor": {
+      "mean_mae_minutes": 34.79390097387492,
+      "std": 1.8151563964355197
+    }
+  },
+  "test_mae_minutes": 32.93099082845671,
+  "test_rmse_minutes": 42.74990935510998,
+  "test_r2": 0.4924232914638502,
+  "max_acceptable_mae": 40.0,
+  "dataset_fingerprint": "17d7e19b533df47d",
+  "feature_importance": null,
+  "training_samples": 1920,
+  "test_samples": 480
+}

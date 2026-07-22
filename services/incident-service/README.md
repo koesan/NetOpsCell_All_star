@@ -30,7 +30,9 @@ Gateway üzerinden atanan teknisyene gerçek zamanlı bildirim olarak da iletili
 | GET | `/health` | Servis sağlık kontrolü |
 | POST | `/api/v1/telemetry` | Telemetri/arıza girişi (Müşteri) → AI Service'e sync çağrı |
 | GET | `/api/v1/incidents` | Vaka listesi (rol bazlı filtreli) |
-| GET | `/api/v1/incidents/:id` | Vaka detayı (sahiplik kontrollü) |
+| GET | `/api/v1/incidents/:id` | Vaka detayı (sahiplik kontrollü; atama skoru kırılımı + ETA + rota uçları dahil) |
+| GET | `/api/v1/incidents/:id/history` | Durum geçiş zaman çizelgesi (kim, ne zaman, neden) |
+| GET | `/api/v1/stations` | Baz istasyonu kataloğu (18 İstanbul lokasyonu; ilk açılışta otomatik seed) |
 | PATCH | `/api/v1/incidents/:id/status` | Durum geçişi (state machine, kural dışı → 422) |
 | PATCH | `/api/v1/incidents/:id/assign` | Manuel atama (Süpervizör) |
 | POST | `/api/v1/incidents/:id/confirm` | NOC/Süpervizör: VAKA_AC tahminini onaylayıp AI ile otomatik atama tetikler |

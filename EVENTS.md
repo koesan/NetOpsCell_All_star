@@ -54,6 +54,22 @@
 }
 ```
 
+### `incident.assigned`
+```json
+{
+  "incident_id": "INC-2026-000123",
+  "team_id": "<team_user_id>",
+  "team_name": "Ayse Sahin",
+  "score": 0.87,
+  "distance_km": 3.4,
+  "eta_total_minutes": 118.5,
+  "assigned_at": "..."
+}
+```
+`score/distance_km` yalnızca AI atamasında bulunur; `eta_total_minutes` ETA regresyon modeli
+(ikinci ML modeli) erişilebilir olduğunda hem AI hem manuel atamada doldurulur. Gateway bu
+event'i WebSocket ile atanan teknisyene `incident:assigned` olarak iletir.
+
 ### `incident.status.changed`
 ```json
 { "incident_id": "INC-2026-000123", "from_status": "YOLDA", "to_status": "MUDAHALE_EDILIYOR", "changed_by": "<user_id>", "changed_at": "..." }

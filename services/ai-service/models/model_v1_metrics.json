@@ -3,68 +3,70 @@
   "selected_model": "RandomForestClassifier",
   "cross_validation": {
     "LogisticRegression": {
-      "mean_macro_f1": 0.917554210495387,
-      "std": 0.02559801234058347
+      "mean_macro_f1": 0.9664970331341957,
+      "std": 0.013149709615396155
     },
     "RandomForestClassifier": {
-      "mean_macro_f1": 0.9689821289821291,
-      "std": 0.01928981071114025
+      "mean_macro_f1": 0.9733015502016462,
+      "std": 0.0050102665060298346
     },
     "GradientBoostingClassifier": {
-      "mean_macro_f1": 0.92260545010545,
-      "std": 0.023597233778614835
+      "mean_macro_f1": 0.9716100564583577,
+      "std": 0.011095968862074935
     }
   },
-  "test_macro_f1": 0.9790849673202615,
+  "test_macro_f1": 0.9570084249465695,
+  "min_acceptable_macro_f1": 0.85,
+  "dataset_fingerprint": "434e6efbdcb582fa",
   "classification_report": {
     "NORMAL": {
-      "precision": 0.8888888888888888,
-      "recall": 1.0,
-      "f1-score": 0.9411764705882353,
-      "support": 8.0
+      "precision": 0.9361702127659575,
+      "recall": 0.88,
+      "f1-score": 0.9072164948453608,
+      "support": 50.0
     },
     "DONANIM": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 8.0
+      "precision": 0.9795918367346939,
+      "recall": 0.96,
+      "f1-score": 0.9696969696969697,
+      "support": 50.0
     },
     "GUC_KESINTISI": {
       "precision": 1.0,
       "recall": 1.0,
       "f1-score": 1.0,
-      "support": 8.0
+      "support": 50.0
     },
     "BAGLANTI": {
       "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 8.0
+      "recall": 0.98,
+      "f1-score": 0.98989898989899,
+      "support": 50.0
     },
     "YAZILIM": {
-      "precision": 1.0,
-      "recall": 0.875,
-      "f1-score": 0.9333333333333333,
-      "support": 8.0
+      "precision": 0.8545454545454545,
+      "recall": 0.94,
+      "f1-score": 0.8952380952380953,
+      "support": 50.0
     },
     "ISINMA": {
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 8.0
+      "precision": 0.98,
+      "recall": 0.98,
+      "f1-score": 0.98,
+      "support": 50.0
     },
-    "accuracy": 0.9791666666666666,
+    "accuracy": 0.9566666666666667,
     "macro avg": {
-      "precision": 0.9814814814814815,
-      "recall": 0.9791666666666666,
-      "f1-score": 0.9790849673202615,
-      "support": 48.0
+      "precision": 0.9583845840076842,
+      "recall": 0.9566666666666667,
+      "f1-score": 0.9570084249465692,
+      "support": 300.0
     },
     "weighted avg": {
-      "precision": 0.9814814814814815,
-      "recall": 0.9791666666666666,
-      "f1-score": 0.9790849673202615,
-      "support": 48.0
+      "precision": 0.9583845840076842,
+      "recall": 0.9566666666666667,
+      "f1-score": 0.9570084249465693,
+      "support": 300.0
     }
   },
   "confusion_matrix": {
@@ -78,101 +80,101 @@
     ],
     "matrix": [
       [
-        8,
+        44,
         0,
         0,
+        0,
+        6,
+        0
+      ],
+      [
+        0,
+        48,
+        0,
+        0,
+        1,
+        1
+      ],
+      [
+        0,
+        0,
+        50,
         0,
         0,
         0
       ],
       [
         0,
-        8,
+        0,
+        0,
+        49,
+        1,
+        0
+      ],
+      [
+        3,
         0,
         0,
         0,
+        47,
         0
       ],
       [
         0,
-        0,
-        8,
-        0,
-        0,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        8,
-        0,
-        0
-      ],
-      [
         1,
         0,
         0,
         0,
-        7,
-        0
-      ],
-      [
-        0,
-        0,
-        0,
-        0,
-        0,
-        8
+        49
       ]
     ]
   },
   "feature_importance": [
     [
       "temperature",
-      0.19211581443844863
+      0.21972412318041779
     ],
     [
       "packet_loss",
-      0.15378883381265454
+      0.15582821300004143
     ],
     [
       "packet_loss_ma",
-      0.14689507157157453
-    ],
-    [
-      "signal_delta",
-      0.1129490140475311
+      0.13719003193424617
     ],
     [
       "power_status_NORMAL",
-      0.09960905878149746
+      0.12829022807238444
     ],
     [
       "signal_strength",
-      0.08656436657164267
+      0.10495245286577362
     ],
     [
       "temperature_trend",
-      0.08609470319200446
+      0.08693398759640474
+    ],
+    [
+      "signal_delta",
+      0.0682067890486509
     ],
     [
       "power_status_OUTAGE",
-      0.05989531792501428
+      0.03338788553890013
     ],
     [
       "historical_fault_count",
-      0.025988463513278416
+      0.025111613550784458
     ],
     [
       "fault_recency_score",
-      0.025175757668358514
+      0.023633090041895784
     ],
     [
       "power_status_UNSTABLE",
-      0.010923598477995409
+      0.01674158517050044
     ]
   ],
-  "training_samples": 192,
-  "test_samples": 48
+  "training_samples": 1200,
+  "test_samples": 300
 }

@@ -1,29 +1,46 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 import { motion } from "framer-motion";
-import { ArrowLeft, Check, CheckCheck, Gauge, MapPin, MessageSquare, Send, Star, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  BrainCircuit,
+  CheckCircle2,
+  Gauge,
+  MapPin,
+  Navigation,
+  Route,
+  Star,
+  Timer,
+  Truck,
+  Users,
+  Wrench,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
-import { Input } from "../../components/ui/Input";
 import { FaultTypeBadge, PriorityBadge, StatusBadge } from "../../components/ui/Badge";
 import { ErrorState, LoadingState } from "../../components/ui/States";
-import { IncidentMap } from "../../components/map/IncidentMap";
+import { OperationsMap } from "../../components/map/OperationsMap";
+import { IncidentChat } from "../../components/chat/IncidentChat";
 import { extractErrorMessage } from "../../lib/api";
 import { SlaCountdown } from "./SlaCountdown";
+import type { Incident, IncidentHistoryEntry, IncidentStatus } from "../../types";
 import {
   useConfirmAssign,
   useCreateResolution,
   useIncident,
+  useIncidentHistory,
   useIncidentMessages,
   useIncidentResolution,
   useMarkMessagesRead,
   useRateResolution,
   useSendMessage,
+  useStations,
   useUpdateStatus,
 } from "./incidentHooks";
 
@@ -34,12 +51,24 @@ const NEXT_STATUS: Record<string, { label: string; status: string }[]> = {
   PARCA_BEKLENIYOR: [{ label: "Parça Tedarik Edildi", status: "MUDAHALE_EDILIYOR" }],
 };
 
+const STATUS_LABELS: Record<IncidentStatus, string> = {
+  YENI: "Yeni",
+  ATANDI: "Atandı",
+  YOLDA: "Yolda",
+  MUDAHALE_EDILIYOR: "Müdahale Ediliyor",
+  PARCA_BEKLENIYOR: "Parça Bekleniyor",
+  COZULDU: "Çözüldü",
+  KAPANDI: "Kapandı",
+};
+
 export function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { data: incident, isLoading, isError, refetch } = useIncident(id);
   const { data: messages } = useIncidentMessages(id);
+  const { data: history } = useIncidentHistory(id);
+  const { data: stations } = useStations();
   const { data: resolution } = useIncidentResolution(id, incident?.status === "COZULDU" || incident?.status === "KAPANDI");
 
   const updateStatus = useUpdateStatus(id);
@@ -49,7 +78,6 @@ export function IncidentDetailPage() {
   const sendMessage = useSendMessage(id);
   const markMessagesRead = useMarkMessagesRead(id);
 
-  const [messageText, setMessageText] = useState("");
   const [resolutionNote, setResolutionNote] = useState("");
   const [rating, setRating] = useState(5);
   const [isPermanent, setIsPermanent] = useState(true);
@@ -57,8 +85,7 @@ export function IncidentDetailPage() {
   const role = user?.role;
   const canMessage = role === "SAHA_TEKNISYENI" || role === "NOC_OPERATORU" || role === "SUPERVIZOR";
 
-  // Thread'i goruntuleyen kullanici icin okundu bilgisini isaretler (bkz. Incident Service
-  // messaging.service.ts - MongoDB tabanli okuma bilgisi/read receipt).
+  // Thread goruntulenirken okunmamis mesajlari READ isaretle (MongoDB read-receipt)
   useEffect(() => {
     if (canMessage && messages && messages.length > 0) {
       markMessagesRead.mutate();
@@ -121,15 +148,27 @@ export function IncidentDetailPage() {
               <InfoStat icon={Gauge} label="AI Olasılığı" value={incident.aiProbability != null ? `${Math.round(incident.aiProbability * 100)}%` : "—"} />
               <InfoStat icon={Zap} label="Öncelik" value={<PriorityBadge priority={incident.priority} />} />
               <InfoStat icon={MapPin} label="Konum" value={incident.latitude ? `${incident.latitude.toFixed(3)}, ${incident.longitude!.toFixed(3)}` : "—"} />
-              <InfoStat icon={MessageSquare} label="Atanan Ekip" value={incident.assignedTeamId ? incident.assignedTeamId.slice(0, 8) : "Atanmadı"} />
+              <InfoStat
+                icon={Timer}
+                label="Tahmini Çözüm"
+                value={incident.etaTotalMinutes != null ? `~${Math.round(incident.etaTotalMinutes)} dk` : "—"}
+              />
             </CardBody>
           </Card>
 
-          {incident.latitude && incident.longitude && (
+          {incident.latitude != null && incident.longitude != null && (
             <Card className="overflow-hidden p-0">
-              <IncidentMap incidents={[incident]} center={[incident.latitude, incident.longitude]} zoom={13} height={280} />
+              <OperationsMap
+                incidents={[incident]}
+                stations={stations ?? []}
+                center={[incident.latitude, incident.longitude]}
+                zoom={12}
+                height={320}
+              />
             </Card>
           )}
+
+          <FieldOperationCard incident={incident} />
 
           {resolution && (
             <Card>
@@ -152,56 +191,19 @@ export function IncidentDetailPage() {
             </Card>
           )}
 
-          {canMessage && (
-            <Card>
-              <CardHeader>
+          {canMessage && user && (
+            <Card className="overflow-hidden p-0">
+              <CardHeader className="border-b border-navy-100/70">
                 <CardTitle>Saha İletişimi</CardTitle>
+                <span className="text-[11px] text-navy-400">Saha ekibi · NOC · Süpervizör</span>
               </CardHeader>
-              <CardBody>
-                <div className="mb-3 max-h-64 space-y-3 overflow-y-auto scrollbar-thin">
-                  {messages?.length === 0 && <p className="text-xs text-navy-400">Henüz mesaj yok.</p>}
-                  {messages?.map((m) => {
-                    const isOwn = m.senderId === user?.id;
-                    return (
-                      <div key={m._id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
-                        <div
-                          className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${
-                            isOwn ? "bg-navy-900 text-white" : "bg-navy-50 text-navy-800"
-                          }`}
-                        >
-                          {m.content}
-                          <p
-                            className={`mt-1 flex items-center gap-1 text-[10px] ${
-                              isOwn ? "text-navy-300" : "text-navy-400"
-                            }`}
-                          >
-                            {formatDistanceToNow(new Date(m.createdAt), { addSuffix: true, locale: tr })}
-                            {isOwn &&
-                              (m.status === "READ" ? (
-                                <CheckCheck className="h-3 w-3 text-brand-yellow" />
-                              ) : (
-                                <Check className="h-3 w-3" />
-                              ))}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <form
-                  className="flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!messageText.trim()) return;
-                    sendMessage.mutate(messageText, { onSuccess: () => setMessageText("") });
-                  }}
-                >
-                  <Input className="flex-1" value={messageText} onChange={(e) => setMessageText(e.target.value)} placeholder="Mesaj yazın..." />
-                  <Button type="submit" size="md" loading={sendMessage.isPending}>
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </form>
-              </CardBody>
+              <IncidentChat
+                messages={messages ?? []}
+                currentUserId={user.id}
+                currentUserRole={user.role}
+                onSend={(content) => sendMessage.mutateAsync(content)}
+                height={430}
+              />
             </Card>
           )}
         </div>
@@ -220,6 +222,8 @@ export function IncidentDetailPage() {
               </CardBody>
             </Card>
           )}
+
+          <AssignmentCard incident={incident} />
 
           {canTransition && (
             <Card>
@@ -308,9 +312,223 @@ export function IncidentDetailPage() {
               </CardBody>
             </Card>
           )}
+
+          <TimelineCard incident={incident} history={history ?? []} />
         </div>
       </div>
     </div>
+  );
+}
+
+/** Atanan ekip + AI skor kirilimi ("Neden bu ekip?") — atama aciklanabilirligi. */
+function AssignmentCard({ incident }: { incident: Incident }) {
+  const detail = incident.assignmentDetail;
+  if (!incident.assignedTeamId) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Atanan Ekip</CardTitle>
+        {detail?.method && (
+          <span className="flex items-center gap-1 rounded-full bg-navy-50 px-2 py-0.5 text-[10px] font-semibold text-navy-500">
+            <BrainCircuit className="h-3 w-3" />
+            {detail.method === "AI" ? "AI ataması" : "Manuel atama"}
+          </span>
+        )}
+      </CardHeader>
+      <CardBody className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-navy-900 text-sm font-semibold text-white">
+            {(incident.assignedTeamName ?? "?").charAt(0)}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-navy-900">{incident.assignedTeamName ?? incident.assignedTeamId.slice(0, 8)}</p>
+            {detail?.distance_km != null && (
+              <p className="text-xs text-navy-400">Vaka konumuna {detail.distance_km.toFixed(1)} km</p>
+            )}
+          </div>
+        </div>
+
+        {detail?.method === "AI" && detail.score != null && (
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-navy-400">Neden bu ekip? — Skor kırılımı</p>
+            <ScoreBar label="Uzmanlık eşleşme" value={detail.uzmanlik_eslesme ?? 0} weight="×0.4" />
+            <ScoreBar label="Mesafe yakınlık" value={detail.mesafe_yakinlik ?? 0} weight="×0.3" />
+            <ScoreBar label="Kapasite boşluğu" value={detail.bosluk_orani ?? 0} weight="×0.3" />
+            <div className="flex items-center justify-between border-t border-navy-100/70 pt-2 text-xs">
+              <span className="font-medium text-navy-500">Toplam skor</span>
+              <span className="font-mono font-semibold text-navy-900">{detail.score.toFixed(2)}</span>
+            </div>
+            {detail.candidates && detail.candidates.length > 1 && (
+              <div className="pt-1">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-navy-400">
+                  Değerlendirilen alternatifler ({detail.candidates_evaluated})
+                </p>
+                <div className="space-y-1">
+                  {detail.candidates.slice(0, 4).map((c) => (
+                    <div key={c.team_id} className="flex items-center justify-between text-[11px]">
+                      <span className={c.team_id === incident.assignedTeamId ? "font-semibold text-navy-800" : "text-navy-500"}>
+                        {c.name ?? c.team_id.slice(0, 8)}
+                        {!c.has_capacity && <span className="ml-1 text-priority-kritik">(dolu)</span>}
+                      </span>
+                      <span className="font-mono text-navy-600">{c.score.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {(incident.etaTravelMinutes != null || incident.etaWorkMinutes != null) && (
+          <div className="rounded-xl bg-surface-subtle p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-navy-400">ETA Modeli Tahmini</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <EtaChip icon={Truck} label="Yol" minutes={incident.etaTravelMinutes} />
+              <EtaChip icon={Wrench} label="Saha işi" minutes={incident.etaWorkMinutes} />
+              <EtaChip icon={Timer} label="Toplam" minutes={incident.etaTotalMinutes} highlight />
+            </div>
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
+function ScoreBar({ label, value, weight }: { label: string; value: number; weight: string }) {
+  return (
+    <div>
+      <div className="mb-0.5 flex items-center justify-between text-[11px]">
+        <span className="text-navy-500">
+          {label} <span className="text-navy-300">{weight}</span>
+        </span>
+        <span className="font-mono font-medium text-navy-700">{value.toFixed(2)}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-navy-50">
+        <motion.div
+          className="h-full rounded-full bg-navy-500"
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.min(100, value * 100)}%` }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EtaChip({ icon: Icon, label, minutes, highlight }: { icon: typeof Truck; label: string; minutes: number | null; highlight?: boolean }) {
+  return (
+    <div className={`rounded-lg px-2 py-1.5 ${highlight ? "bg-navy-900 text-white" : "bg-white text-navy-700"}`}>
+      <Icon className={`mx-auto h-3.5 w-3.5 ${highlight ? "text-brand-yellow" : "text-navy-400"}`} />
+      <p className={`mt-0.5 text-xs font-semibold ${highlight ? "" : "text-navy-900"}`}>
+        {minutes != null ? `~${Math.round(minutes)} dk` : "—"}
+      </p>
+      <p className={`text-[10px] ${highlight ? "text-navy-300" : "text-navy-400"}`}>{label}</p>
+    </div>
+  );
+}
+
+/** Saha operasyonu canli durumu: YOLDA'da varis geri sayimi + ilerleme, sahada is suresi takibi. */
+function FieldOperationCard({ incident }: { incident: Incident }) {
+  const [, forceTick] = useState(0);
+  const live = incident.status === "YOLDA" || incident.status === "MUDAHALE_EDILIYOR";
+
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(() => forceTick((v) => v + 1), 5000);
+    return () => clearInterval(t);
+  }, [live]);
+
+  const progressInfo = useMemo(() => {
+    const now = Date.now();
+    if (incident.status === "YOLDA" && incident.departedAt && incident.etaTravelMinutes) {
+      const elapsedMin = (now - new Date(incident.departedAt).getTime()) / 60000;
+      const pct = Math.min(97, Math.max(2, (elapsedMin / incident.etaTravelMinutes) * 100));
+      const kalan = Math.max(0, Math.round(incident.etaTravelMinutes - elapsedMin));
+      return { title: "Ekip yolda", sub: `Tahmini varışa ~${kalan} dk`, pct, icon: Navigation };
+    }
+    if (incident.status === "MUDAHALE_EDILIYOR" && incident.arrivedAt && incident.etaWorkMinutes) {
+      const elapsedMin = (now - new Date(incident.arrivedAt).getTime()) / 60000;
+      const pct = Math.min(97, Math.max(2, (elapsedMin / incident.etaWorkMinutes) * 100));
+      const kalan = Math.max(0, Math.round(incident.etaWorkMinutes - elapsedMin));
+      return { title: "Sahada müdahale sürüyor", sub: `Tahmini tamamlanmaya ~${kalan} dk`, pct, icon: Wrench };
+    }
+    return null;
+  }, [incident]);
+
+  if (!progressInfo) return null;
+  const Icon = progressInfo.icon;
+
+  return (
+    <Card>
+      <CardBody className="pt-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-navy-900">
+            <Icon className="h-5 w-5 text-brand-yellow" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-navy-900">{progressInfo.title}</p>
+              <span className="font-mono text-xs font-semibold text-navy-600">%{Math.round(progressInfo.pct)}</span>
+            </div>
+            <p className="text-xs text-navy-400">{progressInfo.sub} · haritada canlı izlenebilir</p>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-navy-50">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-navy-500 to-navy-900"
+                animate={{ width: `${progressInfo.pct}%` }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+              />
+            </div>
+          </div>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+/** Vaka yasam dongusu zaman cizelgesi (durum gecis gecmisi). */
+function TimelineCard({ incident, history }: { incident: Incident; history: IncidentHistoryEntry[] }) {
+  const entries = useMemo(() => {
+    const items: { key: string; label: string; sub?: string; at: string }[] = [
+      { key: "created", label: "Vaka oluşturuldu", sub: incident.aiProbability != null ? `AI olasılığı %${Math.round(incident.aiProbability * 100)}` : undefined, at: incident.createdAt },
+      ...history.map((h) => ({
+        key: h.id,
+        label: `${STATUS_LABELS[h.fromStatus]} → ${STATUS_LABELS[h.toStatus]}`,
+        sub: h.reason ?? undefined,
+        at: h.changedAt,
+      })),
+    ];
+    return items;
+  }, [incident, history]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Zaman Çizelgesi</CardTitle>
+        <Route className="h-4 w-4 text-navy-300" />
+      </CardHeader>
+      <CardBody>
+        <ol className="relative space-y-4 border-l border-navy-100 pl-4">
+          {entries.map((entry, i) => (
+            <li key={entry.key} className="relative">
+              <span
+                className={`absolute -left-[21.5px] top-0.5 flex h-3 w-3 items-center justify-center rounded-full border-2 border-white ${
+                  i === entries.length - 1 ? "bg-navy-900" : "bg-navy-300"
+                }`}
+              >
+                {i === entries.length - 1 && <CheckCircle2 className="h-2 w-2 text-white" />}
+              </span>
+              <p className="text-xs font-semibold text-navy-800">{entry.label}</p>
+              {entry.sub && <p className="text-[11px] text-navy-400">{entry.sub}</p>}
+              <p className="mt-0.5 flex items-center gap-1 text-[10px] text-navy-300">
+                <Users className="h-2.5 w-2.5" />
+                {format(new Date(entry.at), "d MMM HH:mm", { locale: tr })}
+              </p>
+            </li>
+          ))}
+        </ol>
+      </CardBody>
+    </Card>
   );
 }
 

@@ -236,6 +236,7 @@ export class AuthService {
     const accessToken = signAccessToken({
       sub: user.id,
       role: user.role,
+      name: [user.name, user.surname].filter(Boolean).join(" ") || undefined,
       expertise: user.expertise ?? undefined,
       region: user.region ?? undefined,
     });

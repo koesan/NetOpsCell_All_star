@@ -9,6 +9,7 @@ import type { BadgeCatalogItem } from "../types";
 interface IncidentAssignedPayload {
   incident_id: string;
   team_id: string;
+  eta_total_minutes?: number | null;
 }
 
 interface BadgeEarnedPayload {
@@ -35,7 +36,10 @@ export function useRealtimeNotifications(): void {
 
     socket.on("incident:assigned", (payload: IncidentAssignedPayload) => {
       if (payload.team_id !== user.id) return;
-      toast.info(`Size yeni bir arıza atandı: ${payload.incident_id}`);
+      toast.info(
+        `Size yeni bir arıza atandı: ${payload.incident_id}` +
+          (payload.eta_total_minutes != null ? ` · tahmini çözüm ~${Math.round(payload.eta_total_minutes)} dk` : "")
+      );
       queryClient.invalidateQueries({ queryKey: ["incidents"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-incidents"] });
     });

@@ -1,6 +1,44 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
-import type { Incident, IncidentMessage, IncidentResolution } from "../../types";
+import type { Incident, IncidentHistoryEntry, IncidentMessage, IncidentResolution, Station, TeamInfo } from "../../types";
+
+/** Baz istasyonu katalogu — nadiren degisir, agresif cache. */
+export function useStations() {
+  return useQuery({
+    queryKey: ["stations"],
+    queryFn: async () => {
+      const response = await api.get<{ data: Station[] }>("/api/v1/stations");
+      return response.data.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Saha ekibi rosteri + anlik is yuku (AI Service team_cache'inden). */
+export function useTeams(enabled = true) {
+  return useQuery({
+    queryKey: ["ai-teams"],
+    queryFn: async () => {
+      const response = await api.get<{ data: TeamInfo[] }>("/api/v1/ai/teams");
+      return response.data.data;
+    },
+    enabled,
+    refetchInterval: 30000,
+  });
+}
+
+/** Vaka durum gecis zaman cizelgesi. */
+export function useIncidentHistory(id: string | undefined) {
+  return useQuery({
+    queryKey: ["incident-history", id],
+    queryFn: async () => {
+      const response = await api.get<{ data: IncidentHistoryEntry[] }>(`/api/v1/incidents/${id}/history`);
+      return response.data.data;
+    },
+    enabled: !!id,
+    refetchInterval: 15000,
+  });
+}
 
 export function useIncidents(queryKey = "incidents") {
   return useQuery({
@@ -44,7 +82,7 @@ export function useIncidentMessages(id: string | undefined) {
       return response.data.data;
     },
     enabled: !!id,
-    refetchInterval: 8000,
+    refetchInterval: 4000, // WhatsApp benzeri deneyim: yakin-gercek-zamanli thread guncellemesi
   });
 }
 

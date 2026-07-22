@@ -11,6 +11,17 @@ export interface PredictResult {
   model_version: string;
 }
 
+export interface AssignCandidate {
+  team_id: string;
+  name: string | null;
+  score: number;
+  uzmanlik_eslesme: number;
+  mesafe_yakinlik: number;
+  bosluk_orani: number;
+  distance_km: number | null;
+  has_capacity: boolean;
+}
+
 export interface AssignResult {
   assigned_team: {
     team_id: string;
@@ -20,9 +31,24 @@ export interface AssignResult {
     mesafe_yakinlik: number;
     bosluk_orani: number;
     distance_km: number | null;
+    team_lat: number | null;
+    team_lng: number | null;
+    travel_minutes: number | null;
+    work_minutes: number | null;
+    total_eta_minutes: number | null;
+    eta_model_version: string | null;
   } | null;
   queued: boolean;
   candidates_evaluated: number;
+  candidates?: AssignCandidate[];
+}
+
+export interface EstimateResult {
+  work_minutes: number;
+  travel_minutes: number | null;
+  total_eta_minutes: number;
+  distance_km: number | null;
+  eta_model_version: string;
 }
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://ai-service:8000";
@@ -106,6 +132,7 @@ export class AiClientService implements OnModuleInit {
   async assign(payload: {
     incident_id: string;
     fault_type: string;
+    priority?: string;
     latitude: number | null;
     longitude: number | null;
   }): Promise<AssignResult | null> {
@@ -113,6 +140,28 @@ export class AiClientService implements OnModuleInit {
       return await this.assignBreaker.fire(payload);
     } catch (err) {
       this.logger.warn(`AI Service /assign erisilemedi, vaka manuel kuyruga dusecek: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Manuel atama zenginlestirmesi: supervizorun sectigi ekip icin ETA tahmini.
+   * Dusuk frekansli ve opsiyonel oldugu icin devre kesici yerine tek deneme + fallback yeterlidir. */
+  async estimate(payload: {
+    fault_type: string;
+    priority: string;
+    team_id: string;
+    latitude: number | null;
+    longitude: number | null;
+  }): Promise<EstimateResult | null> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post<{ success: boolean; data: EstimateResult }>(`${AI_SERVICE_URL}/api/v1/ai/estimate`, payload, {
+          timeout: TIMEOUT_MS,
+        })
+      );
+      return response.data.data;
+    } catch (err) {
+      this.logger.warn(`AI Service /estimate erisilemedi, atama ETA'siz devam edecek: ${(err as Error).message}`);
       return null;
     }
   }

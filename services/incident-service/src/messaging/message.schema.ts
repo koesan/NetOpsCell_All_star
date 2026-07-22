@@ -15,6 +15,8 @@ export interface MessageDocument {
   incidentId: string;
   senderId: string;
   senderRole: string;
+  /** Gonderenin gorunen adi (JWT'deki name claim'i). SYSTEM mesajlarinda "Sistem". */
+  senderName?: string;
   content: string;
   messageType: MessageType;
   status: MessageStatus;

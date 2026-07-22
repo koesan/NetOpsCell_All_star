@@ -7,24 +7,45 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Card } from "../../components/ui/Card";
 import { FaultTypeBadge, PriorityBadge, StatusBadge } from "../../components/ui/Badge";
 import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States";
-import { useIncidents } from "./incidentHooks";
+import { OperationsMap } from "../../components/map/OperationsMap";
+import { useIncidents, useStations, useTeams } from "./incidentHooks";
 import { SlaCountdown } from "./SlaCountdown";
 
 export function IncidentsListPage({
   title,
   description,
   basePath,
+  showMap = false,
+  showTeamsOnMap = true,
 }: {
   title: string;
   description?: string;
   basePath: string;
+  /** Liste ustunde canli operasyon haritasi (istasyonlar + ekipler + rotalar + arac akisi). */
+  showMap?: boolean;
+  showTeamsOnMap?: boolean;
 }) {
   const { data: incidents, isLoading, isError, refetch } = useIncidents();
+  const { data: stations } = useStations();
+  const { data: teams } = useTeams(showMap && showTeamsOnMap);
   const navigate = useNavigate();
 
   return (
     <div>
       <PageHeader title={title} description={description} />
+
+      {showMap && (
+        <Card className="mb-6 overflow-hidden p-0">
+          <OperationsMap
+            incidents={incidents ?? []}
+            stations={stations ?? []}
+            teams={showTeamsOnMap ? (teams ?? []) : []}
+            height={420}
+            zoom={11}
+            onSelectIncident={(incident) => navigate(`${basePath}/${incident.id}`)}
+          />
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         {isLoading && <LoadingState label="Vakalar yükleniyor..." />}

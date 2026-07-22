@@ -8,6 +8,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Card, CardBody } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Input, Select } from "../../components/ui/Input";
+import { useStations } from "../shared/incidentHooks";
 
 interface TelemetryForm {
   stationCode: string;
@@ -37,6 +38,7 @@ const PRESETS: { label: string; icon: typeof Zap; values: Partial<TelemetryForm>
 ];
 
 export function NewIncidentPage() {
+  const { data: stations } = useStations();
   const [form, setForm] = useState<TelemetryForm>(DEFAULTS);
   const [result, setResult] = useState<null | { aiAvailable: boolean; message?: string; incident?: unknown; prediction?: { probability: number; recommendation: string } }>(null);
   const queryClient = useQueryClient();
@@ -93,13 +95,36 @@ export function NewIncidentPage() {
               }}
             >
               <div className="col-span-2">
-                <Input
-                  label="Baz İstasyonu Kodu"
+                <Select
+                  label="Baz İstasyonu"
                   required
                   value={form.stationCode}
-                  onChange={(e) => setForm({ ...form, stationCode: e.target.value })}
-                  placeholder="BTS-034"
-                />
+                  onChange={(e) => {
+                    const station = stations?.find((s) => s.code === e.target.value);
+                    setForm({
+                      ...form,
+                      stationCode: e.target.value,
+                      ...(station ? { latitude: String(station.latitude), longitude: String(station.longitude) } : {}),
+                    });
+                  }}
+                >
+                  <option value="" disabled>
+                    İstasyon seçin...
+                  </option>
+                  {stations?.map((station) => (
+                    <option key={station.id} value={station.code}>
+                      {station.code} — {station.name} ({station.district}, {station.technology})
+                    </option>
+                  ))}
+                </Select>
+                {form.stationCode && stations && (
+                  <p className="mt-1.5 text-[11px] text-navy-400">
+                    {(() => {
+                      const s = stations.find((x) => x.code === form.stationCode);
+                      return s ? `${s.region} Yakası · ~${(s.coverageUsers / 1000).toFixed(0)}K abone kapsama · konum otomatik dolduruldu` : null;
+                    })()}
+                  </p>
+                )}
               </div>
               <Input label="Enlem" required value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })} />
               <Input label="Boylam" required value={form.longitude} onChange={(e) => setForm({ ...form, longitude: e.target.value })} />

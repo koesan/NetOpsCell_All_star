@@ -128,6 +128,7 @@ app.use("/api/v1/auth", createProxyMiddleware(proxyOptions(IDENTITY_SERVICE_URL,
 app.use("/api/v1/admin", createProxyMiddleware(proxyOptions(IDENTITY_SERVICE_URL, "/api/v1/admin")));
 app.use("/api/v1/telemetry", createProxyMiddleware(proxyOptions(INCIDENT_SERVICE_URL, "/api/v1/telemetry")));
 app.use("/api/v1/incidents", createProxyMiddleware(proxyOptions(INCIDENT_SERVICE_URL, "/api/v1/incidents")));
+app.use("/api/v1/stations", createProxyMiddleware(proxyOptions(INCIDENT_SERVICE_URL, "/api/v1/stations")));
 app.use("/api/v1/dashboard", createProxyMiddleware(proxyOptions(INCIDENT_SERVICE_URL, "/api/v1/dashboard")));
 app.use("/api/v1/ai", createProxyMiddleware(proxyOptions(AI_SERVICE_URL, "/api/v1/ai")));
 app.use("/api/v1/game", createProxyMiddleware(proxyOptions(GAMIFICATION_SERVICE_URL, "/api/v1/game")));

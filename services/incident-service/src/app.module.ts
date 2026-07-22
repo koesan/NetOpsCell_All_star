@@ -9,7 +9,9 @@ import { Incident } from "./entities/incident.entity";
 import { IncidentStatusHistory } from "./entities/incident-status-history.entity";
 import { IncidentResolution } from "./entities/incident-resolution.entity";
 import { TelemetryReading } from "./entities/telemetry-reading.entity";
+import { Station } from "./entities/station.entity";
 
+import { StationsModule } from "./stations/stations.module";
 import { IncidentsModule } from "./incidents/incidents.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { InternalModule } from "./internal/internal.module";
@@ -32,9 +34,10 @@ import { readSecret } from "./common/secrets";
       username: process.env.DB_USER || "incident_user",
       password: readSecret("DB_PASSWORD", "changeme"),
       database: process.env.DB_NAME || "incident",
-      entities: [Incident, IncidentStatusHistory, IncidentResolution, TelemetryReading],
+      entities: [Incident, IncidentStatusHistory, IncidentResolution, TelemetryReading, Station],
       synchronize: true, // Faz 1: hackathon hizi icin. Uretimde migration'a gecilir.
     }),
+    StationsModule,
     IncidentsModule,
     DashboardModule,
     InternalModule,

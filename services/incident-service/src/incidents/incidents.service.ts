@@ -158,6 +158,7 @@ export class IncidentsService {
     const assignResult = await this.aiClient.assign({
       incident_id: incident.incidentNo,
       fault_type: incident.faultType,
+      priority: incident.priority,
       latitude: incident.latitude,
       longitude: incident.longitude,
     });
@@ -167,14 +168,46 @@ export class IncidentsService {
       return;
     }
 
-    incident.assignedTeamId = assignResult.assigned_team.team_id;
+    const team = assignResult.assigned_team;
+    incident.assignedTeamId = team.team_id;
+    incident.assignedTeamName = team.name;
+    incident.assignedTeamLat = team.team_lat;
+    incident.assignedTeamLng = team.team_lng;
+    incident.assignmentDetail = {
+      method: "AI",
+      score: team.score,
+      uzmanlik_eslesme: team.uzmanlik_eslesme,
+      mesafe_yakinlik: team.mesafe_yakinlik,
+      bosluk_orani: team.bosluk_orani,
+      distance_km: team.distance_km,
+      candidates: assignResult.candidates ?? [],
+      candidates_evaluated: assignResult.candidates_evaluated,
+    };
+    incident.etaTravelMinutes = team.travel_minutes;
+    incident.etaWorkMinutes = team.work_minutes;
+    incident.etaTotalMinutes = team.total_eta_minutes;
     incident.status = IncidentStatus.ATANDI;
     await this.incidentRepo.save(incident);
     await this.recordHistory(incident.id, IncidentStatus.YENI, IncidentStatus.ATANDI, null, "Otomatik atama (AI)");
+
+    const etaText =
+      team.total_eta_minutes != null
+        ? ` Tahmini cozum: ~${Math.round(team.total_eta_minutes)} dk (yol ${Math.round(team.travel_minutes ?? 0)} dk + saha ${Math.round(team.work_minutes ?? 0)} dk).`
+        : "";
+    await this.messagingService.sendSystemMessage(
+      incident.id,
+      `AI atamasi: ${team.name ?? team.team_id} ekibi gorevlendirildi (skor ${team.score.toFixed(2)}${
+        team.distance_km != null ? `, mesafe ${team.distance_km.toFixed(1)} km` : ""
+      }).${etaText}`
+    );
+
     await this.eventPublisher.publish("incident.assigned", {
       incident_id: incident.incidentNo,
-      team_id: assignResult.assigned_team.team_id,
-      score: assignResult.assigned_team.score,
+      team_id: team.team_id,
+      team_name: team.name,
+      score: team.score,
+      distance_km: team.distance_km,
+      eta_total_minutes: team.total_eta_minutes,
       assigned_at: new Date().toISOString(),
     });
   }
@@ -243,8 +276,17 @@ export class IncidentsService {
     if (dto.status === IncidentStatus.KAPANDI) {
       incident.closedAt = new Date();
     }
+    // Canli saha akisi: yola cikis/varis zaman damgalari haritadaki arac
+    // animasyonunun ve gerceklesen-vs-tahmin ETA karsilastirmasinin temelidir.
+    if (dto.status === IncidentStatus.YOLDA && !incident.departedAt) {
+      incident.departedAt = new Date();
+    }
+    if (dto.status === IncidentStatus.MUDAHALE_EDILIYOR && from === IncidentStatus.YOLDA && !incident.arrivedAt) {
+      incident.arrivedAt = new Date();
+    }
     await this.incidentRepo.save(incident);
     await this.recordHistory(incident.id, from, dto.status, user.sub, dto.reason);
+    await this.sendTransitionSystemMessage(incident, from, dto.status);
     await this.eventPublisher.publish("incident.status.changed", {
       incident_id: incident.incidentNo,
       from_status: from,
@@ -262,16 +304,64 @@ export class IncidentsService {
     }
     const from = incident.status;
     incident.assignedTeamId = dto.teamId;
+    incident.assignmentDetail = { method: "MANUEL", assigned_by: user.sub };
+
+    // Manuel atamada da ETA modeli calisir; AI Service kapaliysa atama ETA'siz tamamlanir.
+    const estimate = await this.aiClient.estimate({
+      fault_type: incident.faultType,
+      priority: incident.priority,
+      team_id: dto.teamId,
+      latitude: incident.latitude,
+      longitude: incident.longitude,
+    });
+    if (estimate) {
+      incident.etaTravelMinutes = estimate.travel_minutes;
+      incident.etaWorkMinutes = estimate.work_minutes;
+      incident.etaTotalMinutes = estimate.total_eta_minutes;
+    }
+
     incident.status = IncidentStatus.ATANDI;
     await this.incidentRepo.save(incident);
     await this.recordHistory(incident.id, from, IncidentStatus.ATANDI, user.sub, "Manuel atama (supervizor)");
+    await this.messagingService.sendSystemMessage(
+      incident.id,
+      `Supervizor tarafindan manuel atama yapildi.${
+        estimate ? ` Tahmini cozum: ~${Math.round(estimate.total_eta_minutes)} dk.` : ""
+      }`
+    );
     await this.eventPublisher.publish("incident.assigned", {
       incident_id: incident.incidentNo,
       team_id: dto.teamId,
+      eta_total_minutes: estimate?.total_eta_minutes ?? null,
       assigned_by: user.sub,
       assigned_at: new Date().toISOString(),
     });
     return incident;
+  }
+
+  /** Durum gecislerini mesaj thread'ine sistem olayi olarak duser (WhatsApp grup olayi gibi). */
+  private async sendTransitionSystemMessage(incident: Incident, from: IncidentStatus, to: IncidentStatus): Promise<void> {
+    const teamName = incident.assignedTeamName ?? "Saha ekibi";
+    const texts: Partial<Record<IncidentStatus, string>> = {
+      [IncidentStatus.YOLDA]: `${teamName} sahaya hareket etti.${
+        incident.etaTravelMinutes != null ? ` Tahmini varis: ~${Math.round(incident.etaTravelMinutes)} dk.` : ""
+      }`,
+      [IncidentStatus.MUDAHALE_EDILIYOR]:
+        from === IncidentStatus.PARCA_BEKLENIYOR
+          ? "Yedek parca tedarik edildi, mudahale devam ediyor."
+          : `${teamName} sahaya ulasti, mudahale basladi.`,
+      [IncidentStatus.PARCA_BEKLENIYOR]: "Yedek parca bekleniyor — durum PARCA_BEKLENIYOR'a cekildi.",
+      [IncidentStatus.KAPANDI]: "Vaka dogrulandi ve kapatildi.",
+    };
+    const text = texts[to];
+    if (text) await this.messagingService.sendSystemMessage(incident.id, text);
+  }
+
+  /** Vaka zaman cizelgesi: durum gecis gecmisi (kim, ne zaman, neden). */
+  async getHistory(id: string, user: AccessTokenPayload): Promise<IncidentStatusHistory[]> {
+    const incident = await this.getOrThrow(id);
+    this.assertOwnership(incident, user);
+    return this.historyRepo.find({ where: { incidentId: id }, order: { changedAt: "ASC" } });
   }
 
   async updateClassification(id: string, dto: ClassificationDto, user: AccessTokenPayload): Promise<Incident> {
@@ -302,7 +392,7 @@ export class IncidentsService {
   async addMessage(id: string, dto: CreateMessageDto, user: AccessTokenPayload) {
     const incident = await this.getOrThrow(id);
     this.assertOwnership(incident, user);
-    return this.messagingService.sendMessage(id, user.sub, user.role, dto.content);
+    return this.messagingService.sendMessage(id, user.sub, user.role, dto.content, user.name);
   }
 
   async getMessages(id: string, user: AccessTokenPayload) {
@@ -333,6 +423,10 @@ export class IncidentsService {
     incident.resolvedAt = new Date();
     await this.incidentRepo.save(incident);
     await this.recordHistory(incident.id, from, IncidentStatus.COZULDU, user.sub, "Cozum notu girildi");
+    await this.messagingService.sendSystemMessage(
+      incident.id,
+      `Vaka cozuldu olarak isaretlendi. Cozum notu: "${dto.resolutionNote.slice(0, 120)}"`
+    );
 
     const elapsedMs = incident.resolvedAt.getTime() - incident.createdAt.getTime();
     const slaMs = SLA_HOURS[incident.priority] * 60 * 60 * 1000;

@@ -83,7 +83,9 @@ class Predictor:
         class_labels = self.pipeline.classes_
 
         prob_by_class = dict(zip(class_labels, probabilities))
-        normal_probability = prob_by_class.get("NORMAL", 0.0)
+        # np.float64 -> float donusumu sart: numpy 2.x'te repr() 'np.float64(x)' dondugu icin
+        # psycopg2'nin float adaptoru bozuk SQL uretir (schema "np" does not exist hatasi).
+        normal_probability = float(prob_by_class.get("NORMAL", 0.0))
         fault_probability = round(1 - normal_probability, 4)
 
         fault_only = {k: v for k, v in prob_by_class.items() if k != "NORMAL"}

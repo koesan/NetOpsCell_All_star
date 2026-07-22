@@ -25,6 +25,7 @@ class PredictResponse(BaseModel):
 class AssignRequest(BaseModel):
     incident_id: str
     fault_type: str
+    priority: Optional[str] = "ORTA"
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -37,12 +38,64 @@ class AssignedTeam(BaseModel):
     mesafe_yakinlik: float
     bosluk_orani: float
     distance_km: Optional[float]
+    team_lat: Optional[float] = None
+    team_lng: Optional[float] = None
+    # ETA modeli (ikinci model, regresyon) ciktilari — bkz. app/ml/eta.py
+    travel_minutes: Optional[float] = None
+    work_minutes: Optional[float] = None
+    total_eta_minutes: Optional[float] = None
+    eta_model_version: Optional[str] = None
+
+
+class AssignCandidate(BaseModel):
+    """Skor tablosundaki alternatif ekipler — supervizor 'neden bu ekip?' panelinde gosterilir."""
+
+    team_id: str
+    name: Optional[str]
+    score: float
+    uzmanlik_eslesme: float
+    mesafe_yakinlik: float
+    bosluk_orani: float
+    distance_km: Optional[float]
+    has_capacity: bool
 
 
 class AssignResponse(BaseModel):
     assigned_team: Optional[AssignedTeam]
     queued: bool
     candidates_evaluated: int
+    candidates: list[AssignCandidate] = []
+
+
+class EstimateRequest(BaseModel):
+    fault_type: str
+    priority: str
+    distance_km: Optional[float] = None
+    team_id: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    historical_fault_count: int = 0
+
+
+class EstimateResponse(BaseModel):
+    work_minutes: float
+    travel_minutes: Optional[float]
+    total_eta_minutes: float
+    distance_km: Optional[float]
+    eta_model_version: str
+    features_used: dict
+
+
+class TeamInfo(BaseModel):
+    team_id: str
+    name: Optional[str]
+    expertise: list[str]
+    region: list[str]
+    lat: Optional[float]
+    lng: Optional[float]
+    active_incidents: int
+    max_capacity: int
+    available: bool
 
 
 class AccuracyResponse(BaseModel):

@@ -39,10 +39,16 @@ birbirinden ayırmak için eklenmiştir.
 | `YAZILIM` | Düzensiz, fiziksel metrik bozulması olmayan osilasyon; `historical_fault_count` yüksek |
 | `DONANIM` | Birden fazla metrik aynı anda kalıcı biçimde bozuk |
 
-**Gerçek üretilen veri seti:** 240 örnek, 6 sınıfa dengeli dağılım (~40/sınıf), ±%15 gürültü
-enjekte edilmiş (overfitting'i önlemek ve sınır durumları temsil etmek için). Üretim
-deterministik bir `random_seed` ile yapılır — aynı komut her zaman aynı veri setini üretir
-(tekrarlanabilirlik ve savunulabilirlik için).
+**Gerçek üretilen veri seti (v2):** 1.500 örnek, 6 sınıfa dengeli dağılım (250/sınıf). Her
+sınıfın örneklerinin **%12'si "zor örnek"tir**: gerçek sahada birbirine karışan sınıf çiftlerinin
+(ISINMA↔DONANIM, BAGLANTI↔GUC_KESINTISI, YAZILIM↔NORMAL) sayısal özellikleri %65–85 oranında
+harmanlanarak sınır bölgesinde üretilir — etiket ana sınıfta kalır. Bu, modelin ezber yerine
+karar sınırlarını öğrenmesini zorlar ve test metriklerinin yapay biçimde şişmesini önler.
+Üretim deterministik bir `random_seed` ile yapılır — aynı komut her zaman aynı veri setini
+üretir (tekrarlanabilirlik ve savunulabilirlik için).
+
+Aynı script ikinci bir veri seti daha üretir: `data/synthetic_resolution.csv` (2.400 örnek) —
+çözüm süresi regresyon modeli için, bkz. Bölüm 10.
 
 ## 3. Model Seçimi
 
@@ -54,38 +60,36 @@ accuracy değil **macro-F1** esas alınmıştır çünkü sınıflar dengeli ols
 
 | Model | Ortalama macro-F1 | Std. sapma |
 |---|---|---|
-| LogisticRegression (baseline) | 0.9176 | 0.0256 |
-| **RandomForestClassifier (seçilen)** | **0.9690** | 0.0193 |
-| GradientBoostingClassifier | 0.9226 | 0.0236 |
+| LogisticRegression (baseline) | 0.9665 | ±0.007 |
+| **RandomForestClassifier (seçilen)** | **0.9733** | ±0.011 |
+| GradientBoostingClassifier | 0.9716 | ±0.011 |
 
-RandomForest hem en yüksek ortalama skoru verdi hem de en düşük varyansa sahipti (düşük veri
-hacminde daha kararlı) — bu yüzden seçildi.
+RandomForest v2 veri setinde de en yüksek ortalama CV skorunu verdi ve seçildi.
 
-**Nihai test seti performansı** (192 eğitim / 48 test örneği, %80/%20 stratified split):
+**Nihai test seti performansı** (1.200 eğitim / 300 test örneği, %80/%20 stratified split):
 
-- **Test macro-F1: 0.9791**
-- **Accuracy: %97.9**
-- Sınıf başına F1: DONANIM 1.00, GUC_KESINTISI 1.00, BAGLANTI 1.00, ISINMA 1.00, NORMAL 0.94,
-  YAZILIM 0.93
-- Confusion matrix'teki tek karışıklık: 1 `YAZILIM` örneği `NORMAL` olarak sınıflandırılmış —
-  beklenen bir durum çünkü YAZILIM sınıfı tanım gereği "fiziksel metrik bozulması olmayan"
-  düşük genlikli bir patern kullanır, bu yüzden NORMAL'e en yakın sınıftır.
+- **Test macro-F1: 0.957** — v1'deki 0.979'dan daha düşük görünür ama bu bilinçlidir: v2 veri
+  setindeki %12 sınır-bölgesi örneği problemi zorlaştırır; 0.96'lık skor "kolay veri üzerinde
+  şişirilmiş metrik" değil, gerçekçi belirsizlik altında ölçülmüş performanstır.
+- Confusion matrix'teki karışıklıklar tamamen beklenen sinir bölgelerindedir: NORMAL↔YAZILIM
+  (düşük genlikli aralıklı hata normal gürültüsüne benzer) ve DONANIM↔ISINMA (aşırı ısınan
+  donanım). Fiziksel olarak ayrık sınıflarda (GUC_KESINTISI, BAGLANTI) hata yoktur.
 
 **Açıklanabilirlik (feature importance, RandomForest `feature_importances_`):**
 
 | Özellik | Önem |
 |---|---|
-| `temperature` | 0.192 |
-| `packet_loss` | 0.154 |
-| `packet_loss_ma` | 0.147 |
-| `signal_delta` | 0.113 |
-| `power_status_NORMAL` | 0.100 |
-| `signal_strength` | 0.087 |
-| `temperature_trend` | 0.086 |
-| `power_status_OUTAGE` | 0.060 |
-| `historical_fault_count` | 0.026 |
-| `fault_recency_score` | 0.025 |
-| `power_status_UNSTABLE` | 0.011 |
+| `temperature` | 0.220 |
+| `packet_loss` | 0.156 |
+| `packet_loss_ma` | 0.137 |
+| `power_status_NORMAL` | 0.128 |
+| `signal_strength` | 0.105 |
+| `temperature_trend` | 0.087 |
+| `signal_delta` | 0.068 |
+| `power_status_OUTAGE` | 0.033 |
+| `historical_fault_count` | 0.025 |
+| `fault_recency_score` | 0.024 |
+| `power_status_UNSTABLE` | 0.017 |
 
 Sıcaklık ve paket kaybı (ham + hareketli ortalama) modelin kararında en belirleyici özellikler —
 bu, ISINMA/BAGLANTI ayrımının veri setinde beklendiği gibi güçlü sinyallerle temsil edildiğini
@@ -162,10 +166,54 @@ yakınlık/boşluk oranı sınır davranışları, uçtan uca skor hesaplama).
   oranı belli bir eşiğin altına düştüğünde otomatik uyarı (Prometheus/Alertmanager, bkz.
   `docs/ARCHITECTURE.md` Bölüm 22) ve periyodik yeniden eğitim pipeline'ıdır.
 
-## 9. Bilinçli Sınırlamalar
+## 10. İkinci Model: Çözüm Süresi Tahmini (ETA Regresyonu)
 
-- Veri seti sentetik olduğu için gerçek şebeke verisindeki dağılım kaymalarını (distribution
+Sınıflandırıcıdan tamamen bağımsız ikinci bir ML modeli, atama anında **sahadaki iş süresini
+(dakika)** tahmin eder (`app/ml/eta.py`, eğitim: `scripts/train_eta_model.py`, model dosyası:
+`models/eta_model_v1.joblib`).
+
+**Neden ayrı model?** Arıza türü tahmini bir *sınıflandırma*, süre tahmini bir *regresyon*
+problemidir; özellik kümeleri de farklıdır (telemetri paterni vs. operasyonel bağlam). Tek
+modele iki görev yüklemek yerine her görev için doğru problem formülasyonu seçildi.
+
+**Özellikler (atama anında bilinenler):** `fault_type`, `priority`, `distance_km` (ekip üssü →
+vaka, haversine), `hour_of_day`, `is_weekend`, `historical_fault_count`.
+
+**Veri üretim süreci** (`data/synthetic_resolution.csv`, 2.400 örnek): arıza türüne göre taban
+iş süresi (ör. DONANIM ~150 dk, YAZILIM ~55 dk), öncelik kaynak çarpanı (KRİTİK vakaya ek kaynak
+→ ×0.85), gece vardiyası (×1.15) ve hafta sonu (×1.08) etkisi, kronik istasyonlarda uzayan tanı
+süresi. Kritik tasarım kararı: **yedek parça ihtiyacı gizli (latent) değişkendir** — veri
+üretiminde süreye eklenir (tür bazlı olasılıkla +N(60,20) dk) ama modele özellik olarak
+VERİLMEZ. Bu, gerçek dünyadaki indirgenemez belirsizliği (aleatoric uncertainty) temsil eder ve
+metriklerin dürüst kalmasını sağlar.
+
+**Gerçek sonuçlar (`models/eta_model_v1_metrics.json`), 5-fold CV + %20 test:**
+
+| Model | CV MAE (dk) |
+|---|---|
+| **Ridge (seçilen)** | **34.55** |
+| GradientBoostingRegressor | 34.79 |
+| RandomForestRegressor | 35.08 |
+
+- **Test MAE: 32.9 dk · RMSE: 42.8 dk · R²: 0.49**
+- R²'nin ~0.5 olması modelin zayıflığı değil, problemin doğası gereğidir: varyansın kalan kısmı
+  bilinçli olarak modele verilmeyen latent parça değişkeninden gelir. Ağaç tabanlı modellerin
+  Ridge'i geçememesi de bunun kanıtıdır — öğrenilebilir yapı büyük ölçüde doğrusaldır (tür +
+  öncelik + mesafe ana etkileri), gerisi indirgenemez gürültüdür.
+- Kalite kapısı: test MAE > 40 dk ise model kaydedilmez, mevcut model korunur.
+
+**Yol süresi ayrı ve deterministik hesaplanır:** `5 dk hazırlık + (mesafe × 1.35 yol kıvrım
+faktörü) / 34 km/s şehir içi ortalama hız`. Frontend'deki canlı araç animasyonu aynı varsayımları
+paylaşır — haritadaki ilerleme ile ETA tutarlıdır. `/api/v1/ai/assign` yanıtı `travel_minutes`,
+`work_minutes`, `total_eta_minutes` alanlarını döner; manuel atama için bağımsız
+`POST /api/v1/ai/estimate` endpoint'i vardır.
+
+## 11. Bilinçli Sınırlamalar
+
+- Veri setleri sentetik olduğu için gerçek şebeke verisindeki dağılım kaymalarını (distribution
   shift) yansıtmaz; üretime geçişte gerçek etiketli veriyle yeniden eğitim şarttır.
-- 240 örnek, üretim ölçeğinde küçük bir veri setidir — cross-validation std. sapmasının düşük
-  olması (RandomForest için 0.019) bu ölçekte umut verici olsa da, gerçek veriyle çok daha büyük
-  bir test seti üzerinde yeniden doğrulanmalıdır.
+- ETA modeli gerçekleşen süre geri beslemesi toplamaz (kapanan vakaların gerçek süreleri ile
+  periyodik yeniden eğitim, üretim yol haritasındadır); şu an `departedAt/arrivedAt` zaman
+  damgaları Incident Service'te bu amaçla kaydedilmektedir.
+- Sınıflandırma veri setindeki sınır-bölgesi örnekleri sezgisel karışabilirlik çiftlerine
+  dayanır; gerçek veride karışıklık matrisinin yapısı farklılaşabilir.

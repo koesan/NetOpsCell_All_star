@@ -44,3 +44,116 @@
   border-radius: 0.5rem !important;
   color: #0f1a4d !important;
 }
+
+/* --- Operasyon haritasi marker'lari ------------------------------------- */
+.nops-station {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1.5px solid #aab6dc;
+  box-shadow: 0 2px 6px rgba(15, 26, 77, 0.2);
+}
+.nops-station-alert {
+  border-color: #e4002b;
+  animation: nops-station-blink 1.6s ease-in-out infinite;
+}
+@keyframes nops-station-blink {
+  0%, 100% { box-shadow: 0 2px 6px rgba(228, 0, 43, 0.25); }
+  50% { box-shadow: 0 0 0 6px rgba(228, 0, 43, 0.15); }
+}
+
+.nops-incident {
+  position: relative;
+  width: 22px;
+  height: 22px;
+}
+.nops-incident-dot {
+  position: absolute;
+  inset: 4px;
+  border-radius: 9999px;
+  background: var(--marker-color);
+  border: 2.5px solid white;
+  box-shadow: 0 2px 6px rgba(15, 26, 77, 0.35);
+}
+.nops-incident-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--marker-color);
+  opacity: 0.5;
+  animation: nops-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes nops-ping {
+  0% { transform: scale(0.6); opacity: 0.55; }
+  80%, 100% { transform: scale(1.9); opacity: 0; }
+}
+
+.nops-team {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  background: #0f1a4d;
+  border: 2px solid white;
+  box-shadow: 0 2px 8px rgba(15, 26, 77, 0.35);
+}
+.nops-team-busy {
+  background: #7d90c9;
+}
+.nops-team-label {
+  position: absolute;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #0f1a4d;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 6px;
+  padding: 1px 5px;
+  box-shadow: 0 1px 3px rgba(15, 26, 77, 0.15);
+}
+
+.nops-vehicle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9999px;
+  background: #001e62;
+  border: 2px solid #ffed00;
+  box-shadow: 0 2px 8px rgba(0, 30, 98, 0.45);
+  transition: transform 0.2s ease;
+}
+.nops-vehicle-moving {
+  animation: nops-vehicle-pulse 1.5s ease-in-out infinite;
+}
+@keyframes nops-vehicle-pulse {
+  0%, 100% { box-shadow: 0 2px 8px rgba(0, 30, 98, 0.45); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 237, 0, 0.25); }
+}
+
+.nops-route-active {
+  stroke-dasharray: 10 14;
+  animation: nops-route-flow 1.2s linear infinite;
+}
+@keyframes nops-route-flow {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* --- WhatsApp tarzi saha mesajlasmasi ----------------------------------- */
+.nops-chat-bg {
+  background-color: #f2f4fa;
+  background-image: radial-gradient(rgba(15, 26, 77, 0.05) 1px, transparent 1px);
+  background-size: 18px 18px;
+}

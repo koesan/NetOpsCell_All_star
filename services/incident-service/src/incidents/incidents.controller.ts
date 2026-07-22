@@ -35,6 +35,11 @@ export class IncidentsController {
     return this.incidentsService.findOne(id, user);
   }
 
+  @Get("incidents/:id/history")
+  getHistory(@Param("id") id: string, @CurrentUser() user: AccessTokenPayload) {
+    return this.incidentsService.getHistory(id, user);
+  }
+
   @Roles(...PERSONEL_VE_SUPERVIZOR)
   @Patch("incidents/:id/status")
   updateStatus(@Param("id") id: string, @Body() dto: UpdateStatusDto, @CurrentUser() user: AccessTokenPayload) {

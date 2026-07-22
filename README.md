@@ -46,6 +46,35 @@ Detaylar için: [Mimari Prensipler](./docs/ARCHITECTURE.md#2-mimari-prensipler-v
 
 ## Proje Durumu
 
+**Faz 5 — Canlı Saha Operasyonu (case kapsamının ötesi):**
+
+- ✅ **İkinci ML modeli — çözüm süresi (ETA) regresyonu:** Sınıflandırıcıdan bağımsız bir
+  Ridge regresyon pipeline'ı (3 aday model, 5-fold CV, MAE kalite kapısı) atama anında sahadaki
+  iş süresini tahmin eder; yol süresi deterministik hesaplanır (şehir içi hız + yol kıvrım
+  faktörü). Atamalar artık `yol + saha işi = toplam ETA` kırılımıyla döner.
+  Metodoloji ve gerçek metrikler: [`ML_APPROACH.md` Bölüm 10](./services/ai-service/ML_APPROACH.md).
+- ✅ **Sentetik veri seti v2:** 1.500 örnek (250/sınıf), %12'si sınıflar arası sınır bölgesinde
+  üretilen "zor örnek" — metrikler gerçekçi belirsizlik altında ölçülür (test macro-F1 0.957).
+  Ayrıca ETA modeli için 2.400 örneklik ayrı bir üretici süreçle (latent parça değişkenli)
+  çözüm süresi veri seti.
+- ✅ **Operasyon haritası:** Baz istasyonu kataloğu (18 gerçek İstanbul lokasyonu), saha ekipleri
+  (üs konumu + anlık iş yükü + müsaitlik), oncelik renkli nabız animasyonlu vaka marker'ları,
+  atama **rota planları** (OSRM gerçek yol geometrisi, erişilemezse kuş uçuşu kavisli düşüş) ve
+  YOLDA durumundaki her ekip için **canlı araç akışı** (departedAt + ETA'dan deterministik
+  interpolasyon — tüm istemciler aynı konumu görür). Zoom/tam ekran/katman seçimi/lejant dahil.
+- ✅ **Atama açıklanabilirliği ("Neden bu ekip?"):** Vaka detayında skor kırılımı
+  (uzmanlık ×0.4 / mesafe ×0.3 / kapasite ×0.3), değerlendirilen alternatif ekipler ve
+  ETA panosu; `assignmentDetail` alanında kalıcı olarak saklanır.
+- ✅ **WhatsApp tarzı saha mesajlaşması:** Gün ayraçları, ardışık mesaj gruplama, gönderen adı +
+  rol rozeti, tek/çift tik okundu bilgisi (MongoDB read-receipt), optimistik gönderim ve vaka
+  yaşam döngüsü olaylarının (atama, yola çıkış, varış, çözüm) thread'e otomatik **sistem
+  mesajı** olarak düşmesi.
+- ✅ **Vaka zaman çizelgesi:** `GET /incidents/:id/history` + arayüzde dikey timeline; YOLDA/varış
+  anları `departedAt/arrivedAt` olarak kaydedilir (ETA gerçekleşme analizi için).
+- ✅ **Tek komut demo senaryosu:** `./scripts/seed-demo.sh` — 6 telemetri (1'i AI tarafından
+  İZLE'ye ayrılır), NOC onayları, tam yaşam döngüsü + 5 yıldız değerlendirme (gamification),
+  PARCA_BEKLENIYOR edge-case'i ve haritada canlı izlenen YOLDA vakası.
+
 **Faz 0, Faz 1, Faz 2, Faz 3 ve Faz 4 tamamlandı ve uçtan uca test edildi:**
 
 - ✅ **Gerçek zamanlı bildirimler (Faz 4, bonus):** Gateway'de Socket.IO relay'i — JWT ile
@@ -161,6 +190,14 @@ olarak kullanır.
 ```bash
 docker compose exec identity-service node dist/seed.js
 curl -X POST http://localhost:8000/internal/refresh-teams -H "x-internal-key: $(cat secrets/internal_api_key.txt)"
+```
+
+**Demo senaryosu (opsiyonel ama önerilir):** sistemi gerçekçi bir "operasyon günü" ile doldurur —
+farklı türlerde vakalar, tam yaşam döngüsü + gamification puanları, saha↔NOC mesajlaşma örneği
+ve haritada canlı izlenen YOLDA vakası:
+
+```bash
+./scripts/seed-demo.sh
 ```
 
 | Rol | Email / GSM | Şifre / OTP |

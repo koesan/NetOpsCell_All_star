@@ -5,8 +5,8 @@ import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card"
 import { StatTile } from "../../components/ui/StatTile";
 import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States";
 import { FaultTypeBadge, PriorityBadge } from "../../components/ui/Badge";
-import { IncidentMap } from "../../components/map/IncidentMap";
-import { useIncidents } from "../shared/incidentHooks";
+import { OperationsMap } from "../../components/map/OperationsMap";
+import { useIncidents, useStations, useTeams } from "../shared/incidentHooks";
 import { useAiAccuracy, useAiAccuracyByCategory, useDashboardSummary } from "./dashboardHooks";
 import type { FaultType, Priority } from "../../types";
 
@@ -40,6 +40,8 @@ export function DashboardPage() {
   const { data: accuracy } = useAiAccuracy();
   const { data: categoryAccuracy } = useAiAccuracyByCategory();
   const { data: incidents } = useIncidents("dashboard-incidents");
+  const { data: stations } = useStations();
+  const { data: teams } = useTeams();
 
   if (isLoading) return <LoadingState label="Dashboard yükleniyor..." />;
   if (isError || !summary) return <ErrorState message="Dashboard verileri yüklenemedi." onRetry={() => refetch()} />;
@@ -174,10 +176,11 @@ export function DashboardPage() {
 
       <Card className="mt-6 overflow-hidden p-0">
         <CardHeader className="px-5 pt-5">
-          <CardTitle>Şebeke Haritası</CardTitle>
+          <CardTitle>Şebeke Operasyon Haritası</CardTitle>
+          <span className="text-[11px] text-navy-400">İstasyonlar · ekipler · rotalar · canlı araç akışı</span>
         </CardHeader>
         <div className="p-5 pt-3">
-          <IncidentMap incidents={incidents ?? []} height={320} zoom={10} />
+          <OperationsMap incidents={incidents ?? []} stations={stations ?? []} teams={teams ?? []} height={400} zoom={10} />
         </div>
       </Card>
 

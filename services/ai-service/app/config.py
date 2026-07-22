@@ -12,6 +12,8 @@ class Settings:
 
     model_path = os.environ.get("MODEL_PATH", "./models/model_v1.joblib")
     model_version = os.environ.get("MODEL_VERSION", "v1")
+    eta_model_path = os.environ.get("ETA_MODEL_PATH", "./models/eta_model_v1.joblib")
+    eta_model_version = os.environ.get("ETA_MODEL_VERSION", "v1")
     min_acceptable_macro_f1 = float(os.environ.get("MIN_ACCEPTABLE_MACRO_F1", "0.85"))
 
     threshold_izle = float(os.environ.get("THRESHOLD_IZLE", "0.40"))

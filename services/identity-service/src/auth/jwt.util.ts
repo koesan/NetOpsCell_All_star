@@ -6,6 +6,7 @@ import { Role } from "../common/enums/role.enum";
 export interface AccessTokenPayload {
   sub: string; // user_id
   role: Role;
+  name?: string; // gorunen ad (mesajlasma ve UI icin; PII minimizasyonu geregi sadece ad-soyad)
   expertise?: string[];
   region?: string[];
 }

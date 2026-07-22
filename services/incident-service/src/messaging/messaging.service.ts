@@ -30,13 +30,20 @@ export class MessagingService {
     this.sendTimestamps.set(key, recent);
   }
 
-  async sendMessage(incidentId: string, senderId: string, senderRole: string, content: string): Promise<MessageDocument> {
+  async sendMessage(
+    incidentId: string,
+    senderId: string,
+    senderRole: string,
+    content: string,
+    senderName?: string
+  ): Promise<MessageDocument> {
     this.assertNotSpamming(senderId, incidentId);
 
     const message: MessageDocument = {
       incidentId,
       senderId,
       senderRole,
+      senderName,
       content,
       messageType: "TEXT",
       status: "SENT",
@@ -46,6 +53,27 @@ export class MessagingService {
 
     const result = await this.mongoService.messagesCollection().insertOne(message);
     return { ...message, _id: result.insertedId };
+  }
+
+  /** Vaka yasam dongusu olaylarini (atama, yola cikis, varis, cozum...) thread'e
+   * otomatik dusuren sistem mesaji. WhatsApp'taki "grup olaylari" gibi ortada gosterilir.
+   * Mongo erisilemezse sessizce atlanir — sistem mesaji hicbir is akisini bloke edemez. */
+  async sendSystemMessage(incidentId: string, content: string): Promise<void> {
+    try {
+      await this.mongoService.messagesCollection().insertOne({
+        incidentId,
+        senderId: "system",
+        senderRole: "SYSTEM",
+        senderName: "Sistem",
+        content,
+        messageType: "SYSTEM",
+        status: "SENT",
+        readBy: [],
+        createdAt: new Date(),
+      });
+    } catch (err) {
+      this.logger.warn(`Sistem mesaji yazilamadi (akis etkilenmez): ${(err as Error).message}`);
+    }
   }
 
   async getThread(incidentId: string): Promise<MessageDocument[]> {

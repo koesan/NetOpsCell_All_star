@@ -18,6 +18,7 @@ export type Level = "BRONZ" | "GUMUS" | "ALTIN" | "PLATIN";
 export interface AccessTokenPayload {
   sub: string;
   role: Role;
+  name?: string;
   expertise?: string[];
   region?: string[];
 }
@@ -39,6 +40,28 @@ export interface TokenPair {
   expiresIn: string;
 }
 
+export interface AssignmentCandidate {
+  team_id: string;
+  name: string | null;
+  score: number;
+  uzmanlik_eslesme: number;
+  mesafe_yakinlik: number;
+  bosluk_orani: number;
+  distance_km: number | null;
+  has_capacity: boolean;
+}
+
+export interface AssignmentDetail {
+  method?: "AI" | "MANUEL";
+  score?: number;
+  uzmanlik_eslesme?: number;
+  mesafe_yakinlik?: number;
+  bosluk_orani?: number;
+  distance_km?: number | null;
+  candidates?: AssignmentCandidate[];
+  candidates_evaluated?: number;
+}
+
 export interface Incident {
   id: string;
   incidentNo: string;
@@ -50,6 +73,15 @@ export interface Incident {
   status: IncidentStatus;
   customerId: string;
   assignedTeamId: string | null;
+  assignedTeamName: string | null;
+  assignedTeamLat: number | null;
+  assignedTeamLng: number | null;
+  assignmentDetail: AssignmentDetail | null;
+  etaTravelMinutes: number | null;
+  etaWorkMinutes: number | null;
+  etaTotalMinutes: number | null;
+  departedAt: string | null;
+  arrivedAt: string | null;
   aiProbability: number | null;
   slaDeadline: string | null;
   slaExceededNotified: boolean;
@@ -58,11 +90,46 @@ export interface Incident {
   closedAt: string | null;
 }
 
+export interface Station {
+  id: string;
+  code: string;
+  name: string;
+  district: string;
+  region: string;
+  latitude: number;
+  longitude: number;
+  technology: string;
+  coverageUsers: number;
+}
+
+export interface TeamInfo {
+  team_id: string;
+  name: string | null;
+  expertise: string[];
+  region: string[];
+  lat: number | null;
+  lng: number | null;
+  active_incidents: number;
+  max_capacity: number;
+  available: boolean;
+}
+
+export interface IncidentHistoryEntry {
+  id: string;
+  incidentId: string;
+  fromStatus: IncidentStatus;
+  toStatus: IncidentStatus;
+  changedBy: string | null;
+  reason: string | null;
+  changedAt: string;
+}
+
 export interface IncidentMessage {
   _id: string;
   incidentId: string;
   senderId: string;
-  senderRole: Role;
+  senderRole: Role | "SYSTEM";
+  senderName?: string;
   content: string;
   messageType: "TEXT" | "SYSTEM";
   status: "SENT" | "DELIVERED" | "READ";
