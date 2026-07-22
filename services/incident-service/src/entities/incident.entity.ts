@@ -32,6 +32,15 @@ export class Incident {
   @Column({ type: "uuid" })
   customerId: string;
 
+  /** Musterinin serbest metin sikayeti (varsa). */
+  @Column({ type: "text", nullable: true })
+  customerNote: string | null;
+
+  /** Gemini LLM on analizi: { muhtemel_alan, olasi_neden, oneri, guven, model } —
+   * salt bilgilendirme; ML siniflandirici ve atama kararlarindan bagimsizdir. */
+  @Column({ type: "jsonb", nullable: true })
+  complaintAnalysis: Record<string, unknown> | null;
+
   @Column({ type: "uuid", nullable: true })
   assignedTeamId: string | null;
 

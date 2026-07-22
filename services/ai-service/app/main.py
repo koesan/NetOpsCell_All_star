@@ -11,7 +11,7 @@ from app.db import SessionLocal, init_db
 from app.middleware import EnvelopeMiddleware
 from app.model_registry import sync_model_registry
 from app.rabbitmq_consumer import consume_forever
-from app.routers import accuracy, assign, eta, internal, predict, teams
+from app.routers import accuracy, assign, complaint, eta, internal, predict, teams
 from app.security_headers import SecurityHeadersMiddleware
 from app.sync import sync_team_cache
 
@@ -56,6 +56,7 @@ app.include_router(predict.router)
 app.include_router(assign.router)
 app.include_router(eta.router)
 app.include_router(teams.router)
+app.include_router(complaint.router)
 app.include_router(accuracy.router)
 app.include_router(internal.router)
 

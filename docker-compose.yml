@@ -50,6 +50,10 @@ secrets:
     file: ./secrets/jwt_public_key.pem
   grafana_admin_password:
     file: ./secrets/grafana_admin_password.txt
+  # Gemini LLM (musteri sikayet on analizi) — kendi anahtarinizi koyun, bkz. README "Gemini API".
+  # Dosya bos birakilirsa ozellik zarifce kapali kalir; sistemin geri kalani etkilenmez.
+  gemini_api_key:
+    file: ./secrets/gemini_api_key.txt
 
 x-resource-defaults: &default-resources
   deploy:
@@ -310,7 +314,9 @@ services:
       IDENTITY_SERVICE_INTERNAL_URL: http://identity-service:3001
       INCIDENT_SERVICE_INTERNAL_URL: http://incident-service:3002
       INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
-    secrets: [ai_db_password, rabbitmq_password, internal_api_key]
+      GEMINI_API_KEY_FILE: /run/secrets/gemini_api_key
+      GEMINI_MODEL: gemini-2.5-flash-lite
+    secrets: [ai_db_password, rabbitmq_password, internal_api_key, gemini_api_key]
     ports:
       - "8000:8000"
     depends_on:

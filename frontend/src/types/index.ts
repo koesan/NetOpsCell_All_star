@@ -62,6 +62,20 @@ export interface AssignmentDetail {
   candidates_evaluated?: number;
 }
 
+export interface ComplaintAnalysis {
+  muhtemel_alan: FaultType;
+  olasi_neden: string;
+  oneri: string;
+  guven: number;
+  model?: string;
+}
+
+export interface EscalationRisk {
+  risk: "DUSUK" | "ORTA" | "YUKSEK";
+  probabilities: Record<string, number>;
+  model_version: string;
+}
+
 export interface Incident {
   id: string;
   incidentNo: string;
@@ -72,6 +86,8 @@ export interface Incident {
   priority: Priority;
   status: IncidentStatus;
   customerId: string;
+  customerNote: string | null;
+  complaintAnalysis: ComplaintAnalysis | null;
   assignedTeamId: string | null;
   assignedTeamName: string | null;
   assignedTeamLat: number | null;

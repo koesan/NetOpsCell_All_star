@@ -21,8 +21,8 @@ export default {
           950: "#040a24",
         },
         brand: {
-          yellow: "#FFED00",
-          "yellow-dark": "#E6D400",
+          yellow: "#FFC900",
+          "yellow-dark": "#E5B500",
         },
         priority: {
           kritik: "#E4002B",
@@ -43,7 +43,7 @@ export default {
       boxShadow: {
         soft: "0 1px 2px rgba(15, 26, 77, 0.04), 0 4px 16px rgba(15, 26, 77, 0.06)",
         elevated: "0 4px 12px rgba(15, 26, 77, 0.08), 0 12px 32px rgba(15, 26, 77, 0.1)",
-        glow: "0 0 0 3px rgba(255, 237, 0, 0.35)",
+        glow: "0 0 0 3px rgba(255, 201, 0, 0.35)",
       },
       keyframes: {
         "fade-in": { "0%": { opacity: 0, transform: "translateY(4px)" }, "100%": { opacity: 1, transform: "translateY(0)" } },

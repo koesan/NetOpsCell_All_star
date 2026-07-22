@@ -85,10 +85,13 @@ export function LoginPage() {
           }}
         />
         <div className="relative flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-yellow">
-            <Radio className="h-6 w-6 text-navy-950" strokeWidth={2.5} />
+          <div className="flex h-10 w-10 rotate-3 items-center justify-center rounded-xl bg-brand-yellow shadow-[0_2px_12px_rgba(255,201,0,0.4)]">
+            <span className="-rotate-3 text-xl font-black leading-none text-navy-950">T</span>
           </div>
-          <span className="text-lg font-bold tracking-tight">NetOpsCell</span>
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-brand-yellow">Turkcell</p>
+            <span className="text-lg font-bold leading-tight tracking-tight">NetOpsCell</span>
+          </div>
         </div>
 
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="relative">
@@ -126,10 +129,13 @@ export function LoginPage() {
           className="w-full max-w-sm"
         >
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-navy-950">
-              <Radio className="h-5 w-5 text-brand-yellow" />
+            <div className="flex h-9 w-9 rotate-3 items-center justify-center rounded-lg bg-brand-yellow">
+              <span className="-rotate-3 text-lg font-black leading-none text-navy-950">T</span>
             </div>
-            <span className="text-base font-bold tracking-tight text-navy-950">NetOpsCell</span>
+            <div>
+              <p className="text-[9px] font-extrabold uppercase tracking-[0.22em] text-navy-500">Turkcell</p>
+              <span className="text-base font-bold leading-tight tracking-tight text-navy-950">NetOpsCell</span>
+            </div>
           </div>
 
           <h2 className="text-2xl font-semibold tracking-tight text-navy-950">Hoş geldiniz</h2>

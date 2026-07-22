@@ -34,7 +34,10 @@ export const NAV_CONFIG: Record<Role, NavItem[]> = {
     { label: "Vakalar", path: "/operasyon/vakalar", icon: ClipboardList },
     { label: "Liderlik Tablosu", path: "/operasyon/liderlik", icon: Trophy },
   ],
+  // Admin: case 3.3 matrisi geregi dashboard + tum kayitlara gorunurluk, personel ve audit yonetimi
   ADMIN: [
+    { label: "Dashboard", path: "/operasyon/dashboard", icon: LayoutDashboard },
+    { label: "Vakalar", path: "/operasyon/vakalar", icon: ClipboardList },
     { label: "Personel", path: "/yonetim/personel", icon: Users },
     { label: "Audit Log", path: "/yonetim/audit-log", icon: ShieldCheck },
   ],

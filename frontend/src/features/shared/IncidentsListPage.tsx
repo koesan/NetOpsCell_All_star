@@ -8,6 +8,7 @@ import { Card } from "../../components/ui/Card";
 import { FaultTypeBadge, PriorityBadge, StatusBadge } from "../../components/ui/Badge";
 import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States";
 import { OperationsMap } from "../../components/map/OperationsMap";
+import { RoutePlanPanel } from "../../components/map/RoutePlanPanel";
 import { useIncidents, useStations, useTeams } from "./incidentHooks";
 import { SlaCountdown } from "./SlaCountdown";
 
@@ -35,16 +36,26 @@ export function IncidentsListPage({
       <PageHeader title={title} description={description} />
 
       {showMap && (
-        <Card className="mb-6 overflow-hidden p-0">
-          <OperationsMap
-            incidents={incidents ?? []}
-            stations={stations ?? []}
-            teams={showTeamsOnMap ? (teams ?? []) : []}
-            height={420}
-            zoom={11}
-            onSelectIncident={(incident) => navigate(`${basePath}/${incident.id}`)}
-          />
-        </Card>
+        <>
+          <Card className="mb-6 overflow-hidden p-0">
+            <OperationsMap
+              incidents={incidents ?? []}
+              stations={stations ?? []}
+              teams={showTeamsOnMap ? (teams ?? []) : []}
+              height={420}
+              zoom={11}
+              onSelectIncident={(incident) => navigate(`${basePath}/${incident.id}`)}
+            />
+          </Card>
+          <div className="mb-6">
+            <RoutePlanPanel
+              incidents={incidents ?? []}
+              teams={showTeamsOnMap ? (teams ?? []) : []}
+              title={showTeamsOnMap ? "Ekip Rota Programı" : "Rota Planım"}
+              onSelectIncident={(incident) => navigate(`${basePath}/${incident.id}`)}
+            />
+          </div>
+        </>
       )}
 
       <Card className="overflow-hidden">

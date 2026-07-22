@@ -2,20 +2,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, Tooltip } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { format } from "date-fns";
 import { Expand, Locate, Shrink } from "lucide-react";
-import type { Incident, IncidentStatus, Priority, Station, TeamInfo } from "../../types";
+import type { Incident, Priority, Station, TeamInfo } from "../../types";
 import { FaultTypeBadge, PriorityBadge, StatusBadge } from "../ui/Badge";
+import { computeTeamRoutePlans, type TeamRoutePlan } from "../../lib/routePlan";
 
 /**
- * NetOpsCell Operasyon Haritasi.
+ * Turkcell NetOpsCell Operasyon Haritasi.
  *
- * Katmanlar: baz istasyonlari, saha ekipleri (us konumu + anlik is yuku), aktif vakalar
- * (oncelik renkli, nabiz animasyonlu) ve atama rota planlari. YOLDA durumundaki her vaka
- * icin arac ikonu, `departedAt` + ETA yol suresine gore rota uzerinde CANLI olarak ilerler —
- * tum istemciler ayni deterministik konumu gorur, ek altyapi gerekmez.
+ * Katmanlar: baz istasyonlari, saha ekipleri (us + anlik is yuku), oncelik renkli
+ * nabiz animasyonlu vakalar ve EKIP BASINA COK DURAKLI ROTA PLANLARI (lib/routePlan.ts).
+ * Bir ekibin uzerinde birden fazla vaka varsa duraklar sirali rozetlerle (1,2,3...)
+ * gosterilir; her duragin planlanan varis saati ve istasyonda kalis suresi tooltip'tedir.
+ * YOLDA ekipler icin arac ikonu, departedAt + ETA yol suresine gore rota uzerinde CANLI
+ * ilerler — deterministik hesap sayesinde tum istemciler ayni konumu gorur.
  *
- * Rota: OSRM public API'den gercek yol geometrisi cekilir (bellek ici cache); erisilemezse
- * kus ucusu kavisli (bezier) cizgiye zarif dusus yapilir.
+ * Rota geometrisi: OSRM public API (bellek ici cache); erisilemezse kus ucusu kavisli
+ * (bezier) cizgiye zarif dusus.
  */
 
 const PRIORITY_COLORS: Record<Priority, string> = {
@@ -24,8 +28,6 @@ const PRIORITY_COLORS: Record<Priority, string> = {
   ORTA: "#F5A623",
   DUSUK: "#5B7A6B",
 };
-
-const EN_ROUTE_STATUSES: IncidentStatus[] = ["ATANDI", "YOLDA", "MUDAHALE_EDILIYOR", "PARCA_BEKLENIYOR"];
 
 const TILE_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 const TILE_ATTRIBUTION =
@@ -47,21 +49,23 @@ function haversineKm(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-/** OSRM erisilemezse: hafif kavisli kus ucusu rota (quadratic bezier, 32 nokta). */
-function fallbackArc(from: LatLng, to: LatLng): LatLng[] {
-  const mid: LatLng = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
-  const dx = to[1] - from[1];
-  const dy = to[0] - from[0];
-  const curve = 0.15;
-  const control: LatLng = [mid[0] + dx * curve, mid[1] - dy * curve];
-  const points: LatLng[] = [];
-  for (let i = 0; i <= 32; i++) {
-    const t = i / 32;
-    const lat = (1 - t) ** 2 * from[0] + 2 * (1 - t) * t * control[0] + t ** 2 * to[0];
-    const lng = (1 - t) ** 2 * from[1] + 2 * (1 - t) * t * control[1] + t ** 2 * to[1];
-    points.push([lat, lng]);
+/** OSRM erisilemezse: ardisik noktalar arasi hafif kavisli bezier zinciri. */
+function fallbackArc(points: LatLng[]): LatLng[] {
+  const out: LatLng[] = [];
+  for (let p = 0; p < points.length - 1; p++) {
+    const from = points[p];
+    const to = points[p + 1];
+    const mid: LatLng = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
+    const control: LatLng = [mid[0] + (to[1] - from[1]) * 0.15, mid[1] - (to[0] - from[0]) * 0.15];
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24;
+      out.push([
+        (1 - t) ** 2 * from[0] + 2 * (1 - t) * t * control[0] + t ** 2 * to[0],
+        (1 - t) ** 2 * from[1] + 2 * (1 - t) * t * control[1] + t ** 2 * to[1],
+      ]);
+    }
   }
-  return points;
+  return out.length ? out : points;
 }
 
 /** Rota uzerinde [0,1] ilerleme oranina karsilik gelen nokta (kumulatif mesafe ile). */
@@ -69,7 +73,6 @@ function pointAlongRoute(route: LatLng[], progress: number): LatLng {
   if (route.length === 0) return [41.0082, 28.9784];
   if (route.length === 1 || progress <= 0) return route[0];
   if (progress >= 1) return route[route.length - 1];
-
   const segments: number[] = [];
   let total = 0;
   for (let i = 1; i < route.length; i++) {
@@ -78,46 +81,48 @@ function pointAlongRoute(route: LatLng[], progress: number): LatLng {
     total += d;
   }
   if (total === 0) return route[0];
-
   let target = total * progress;
   for (let i = 0; i < segments.length; i++) {
     if (target <= segments[i]) {
       const t = segments[i] === 0 ? 0 : target / segments[i];
-      const a = route[i];
-      const b = route[i + 1];
-      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+      return [
+        route[i][0] + (route[i + 1][0] - route[i][0]) * t,
+        route[i][1] + (route[i + 1][1] - route[i][1]) * t,
+      ];
     }
     target -= segments[i];
   }
   return route[route.length - 1];
 }
 
-// OSRM rota cache'i (modul seviyesi — sayfalar arasi gecislerde yeniden fetch onlenir)
+// OSRM cok durakli rota cache'i (modul seviyesi)
 const routeCache = new Map<string, LatLng[]>();
 
-async function fetchRoadRoute(from: LatLng, to: LatLng): Promise<LatLng[]> {
-  const key = `${from[0].toFixed(4)},${from[1].toFixed(4)}-${to[0].toFixed(4)},${to[1].toFixed(4)}`;
+async function fetchRoadRoute(waypoints: LatLng[]): Promise<LatLng[]> {
+  if (waypoints.length < 2) return waypoints;
+  const key = waypoints.map((p) => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join("-");
   const cached = routeCache.get(key);
   if (cached) return cached;
   try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+    const coords = waypoints.map((p) => `${p[1]},${p[0]}`).join(";");
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
     const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
     if (!response.ok) throw new Error(`OSRM ${response.status}`);
     const json = await response.json();
-    const coords: [number, number][] = json?.routes?.[0]?.geometry?.coordinates ?? [];
-    if (coords.length < 2) throw new Error("OSRM bos rota");
-    const route = coords.map(([lng, lat]) => [lat, lng] as LatLng);
+    const geometry: [number, number][] = json?.routes?.[0]?.geometry?.coordinates ?? [];
+    if (geometry.length < 2) throw new Error("OSRM bos rota");
+    const route = geometry.map(([lng, lat]) => [lat, lng] as LatLng);
     routeCache.set(key, route);
     return route;
   } catch {
-    const arc = fallbackArc(from, to);
+    const arc = fallbackArc(waypoints);
     routeCache.set(key, arc);
     return arc;
   }
 }
 
 // ---------------------------------------------------------------------------
-// Marker ikonlari (divIcon + inline SVG — harici asset bagimliligi yok)
+// Marker ikonlari (divIcon + inline SVG)
 // ---------------------------------------------------------------------------
 
 function stationIcon(hasActiveIncident: boolean): L.DivIcon {
@@ -141,6 +146,15 @@ function incidentIcon(priority: Priority): L.DivIcon {
     html: `<div class="nops-incident" style="--marker-color:${color}"><span class="nops-incident-ring"></span><span class="nops-incident-dot"></span></div>`,
     iconSize: [22, 22],
     iconAnchor: [11, 11],
+  });
+}
+
+function stopOrderIcon(order: number, color: string): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div class="nops-stop-order" style="--marker-color:${color}">${order}</div>`,
+    iconSize: [18, 18],
+    iconAnchor: [-4, 22],
   });
 }
 
@@ -181,7 +195,7 @@ export interface OperationsMapProps {
   height?: number | string;
   center?: LatLng;
   zoom?: number;
-  /** Rota + canli arac katmani (atanmis vakalar icin). */
+  /** Ekip basina cok durakli rota plani + canli arac katmani. */
   showRoutes?: boolean;
   onSelectIncident?: (incident: Incident) => void;
 }
@@ -201,7 +215,8 @@ export function OperationsMap({
   const [showStations, setShowStations] = useState(true);
   const [showTeams, setShowTeams] = useState(true);
   const [routes, setRoutes] = useState<Record<string, LatLng[]>>({});
-  // Canli akis saati: arac konumlari her 1.5 sn'de yeniden hesaplanir
+  const [legRoutes, setLegRoutes] = useState<Record<string, LatLng[]>>({});
+  // Canli akis saati: arac konumlari periyodik yeniden hesaplanir
   const [now, setNow] = useState(() => Date.now());
 
   const incidentsWithCoords = useMemo(
@@ -209,18 +224,13 @@ export function OperationsMap({
     [incidents]
   );
 
-  const routedIncidents = useMemo(
-    () =>
-      showRoutes
-        ? incidentsWithCoords.filter(
-            (i) =>
-              EN_ROUTE_STATUSES.includes(i.status) && i.assignedTeamLat != null && i.assignedTeamLng != null
-          )
-        : [],
-    [incidentsWithCoords, showRoutes]
+  // Ekip basina cok durakli rota planlari (siralama + zaman cizelgesi)
+  const plans = useMemo(
+    () => (showRoutes ? computeTeamRoutePlans(incidentsWithCoords, teams) : []),
+    [incidentsWithCoords, teams, showRoutes]
   );
 
-  const hasMovingVehicle = routedIncidents.some((i) => i.status === "YOLDA");
+  const hasMovingVehicle = plans.some((p) => p.stops.some((s) => s.incident.status === "YOLDA"));
 
   useEffect(() => {
     if (!hasMovingVehicle) return;
@@ -228,20 +238,31 @@ export function OperationsMap({
     return () => clearInterval(timer);
   }, [hasMovingVehicle]);
 
-  // Gercek yol rotalarini asenkron cek (cache'li); bilesen kaldirilmissa state'e yazma
+  // Plan rotalarini (cok durakli) ve YOLDA bacagi icin ayri leg rotasini asenkron cek
   useEffect(() => {
     let cancelled = false;
-    routedIncidents.forEach((incident) => {
-      const from: LatLng = [incident.assignedTeamLat!, incident.assignedTeamLng!];
-      const to: LatLng = [incident.latitude!, incident.longitude!];
-      fetchRoadRoute(from, to).then((route) => {
-        if (!cancelled) setRoutes((prev) => (prev[incident.id] === route ? prev : { ...prev, [incident.id]: route }));
+    plans.forEach((plan) => {
+      const waypoints: LatLng[] = [plan.origin, ...plan.stops.map((s) => [s.incident.latitude!, s.incident.longitude!] as LatLng)];
+      fetchRoadRoute(waypoints).then((route) => {
+        if (!cancelled) setRoutes((prev) => (prev[plan.teamId] === route ? prev : { ...prev, [plan.teamId]: route }));
       });
+
+      const yoldaIndex = plan.stops.findIndex((s) => s.incident.status === "YOLDA");
+      if (yoldaIndex >= 0) {
+        const prevPoint: LatLng =
+          yoldaIndex === 0
+            ? plan.origin
+            : [plan.stops[yoldaIndex - 1].incident.latitude!, plan.stops[yoldaIndex - 1].incident.longitude!];
+        const target: LatLng = [plan.stops[yoldaIndex].incident.latitude!, plan.stops[yoldaIndex].incident.longitude!];
+        fetchRoadRoute([prevPoint, target]).then((route) => {
+          if (!cancelled) setLegRoutes((prev) => (prev[plan.teamId] === route ? prev : { ...prev, [plan.teamId]: route }));
+        });
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [routedIncidents]);
+  }, [plans]);
 
   const activeStationCodes = useMemo(
     () =>
@@ -250,6 +271,13 @@ export function OperationsMap({
       ),
     [incidentsWithCoords]
   );
+
+  // Istasyon kodu -> planlanan durak bilgisi (popup'ta "ne zaman gidilecek" icin)
+  const stopByStation = useMemo(() => {
+    const map = new Map<string, { plan: TeamRoutePlan; stop: TeamRoutePlan["stops"][number] }>();
+    for (const plan of plans) for (const stop of plan.stops) map.set(stop.incident.stationCode, { plan, stop });
+    return map;
+  }, [plans]);
 
   const defaultCenter: LatLng =
     center ??
@@ -272,7 +300,6 @@ export function OperationsMap({
 
   const toggleFullscreen = () => {
     setIsFullscreen((prev) => !prev);
-    // Konteyner boyutu degistikten sonra Leaflet'in tile hesabini tazele
     setTimeout(() => mapRef.current?.invalidateSize(), 60);
   };
 
@@ -284,19 +311,32 @@ export function OperationsMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFullscreen]);
 
-  /** YOLDA vakasi icin canli arac konumu; diger durumlar icin sabit konum. */
-  const vehiclePosition = (incident: Incident): { position: LatLng; moving: boolean; progress: number } => {
-    const route = routes[incident.id] ?? [
-      [incident.assignedTeamLat!, incident.assignedTeamLng!],
-      [incident.latitude!, incident.longitude!],
-    ];
-    if (incident.status === "ATANDI") return { position: route[0], moving: false, progress: 0 };
-    if (incident.status !== "YOLDA") return { position: route[route.length - 1], moving: false, progress: 1 };
-
-    const departed = incident.departedAt ? new Date(incident.departedAt).getTime() : now;
-    const travelMs = Math.max(1, incident.etaTravelMinutes ?? 20) * 60_000;
-    const progress = Math.min(0.97, Math.max(0.02, (now - departed) / travelMs));
-    return { position: pointAlongRoute(route, progress), moving: true, progress };
+  /** Plan basina canli arac konumu. */
+  const vehicleForPlan = (plan: TeamRoutePlan): { position: LatLng; moving: boolean; label: string } => {
+    const onSite = plan.stops.find(
+      (s) => s.incident.status === "MUDAHALE_EDILIYOR" || s.incident.status === "PARCA_BEKLENIYOR"
+    );
+    if (onSite) {
+      return {
+        position: [onSite.incident.latitude!, onSite.incident.longitude!],
+        moving: false,
+        label: `sahada (${onSite.order}. durak)`,
+      };
+    }
+    const yolda = plan.stops.find((s) => s.incident.status === "YOLDA");
+    if (yolda) {
+      const departed = yolda.incident.departedAt ? new Date(yolda.incident.departedAt).getTime() : now;
+      const travelMs = Math.max(1, yolda.travelMinutes || 20) * 60_000;
+      const progress = Math.min(0.97, Math.max(0.02, (now - departed) / travelMs));
+      const leg =
+        legRoutes[plan.teamId] ?? ([plan.origin, [yolda.incident.latitude!, yolda.incident.longitude!]] as LatLng[]);
+      return {
+        position: pointAlongRoute(leg, progress),
+        moving: true,
+        label: `${yolda.order}. duraga yolda · %${Math.round(progress * 100)}`,
+      };
+    }
+    return { position: plan.origin, moving: false, label: "çıkışa hazırlanıyor" };
   };
 
   return (
@@ -320,27 +360,36 @@ export function OperationsMap({
 
         {/* Baz istasyonlari */}
         {showStations &&
-          stations.map((station) => (
-            <Marker
-              key={station.id}
-              position={[station.latitude, station.longitude]}
-              icon={stationIcon(activeStationCodes.has(station.code))}
-              zIndexOffset={0}
-            >
-              <Popup>
-                <div className="min-w-[170px] font-sans">
-                  <p className="font-mono text-xs font-semibold text-navy-900">{station.code}</p>
-                  <p className="mt-0.5 text-xs font-medium text-navy-700">{station.name}</p>
-                  <p className="text-[11px] text-navy-400">
-                    {station.district} · {station.region} Yakasi · {station.technology}
-                  </p>
-                  <p className="mt-1 text-[11px] text-navy-500">
-                    ~{(station.coverageUsers / 1000).toFixed(0)}K abone kapsama
-                  </p>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+          stations.map((station) => {
+            const planned = stopByStation.get(station.code);
+            return (
+              <Marker
+                key={station.id}
+                position={[station.latitude, station.longitude]}
+                icon={stationIcon(activeStationCodes.has(station.code))}
+                zIndexOffset={0}
+              >
+                <Popup>
+                  <div className="min-w-[180px] font-sans">
+                    <p className="font-mono text-xs font-semibold text-navy-900">{station.code}</p>
+                    <p className="mt-0.5 text-xs font-medium text-navy-700">{station.name}</p>
+                    <p className="text-[11px] text-navy-400">
+                      {station.district} · {station.region} Yakası · {station.technology}
+                    </p>
+                    <p className="mt-1 text-[11px] text-navy-500">
+                      ~{(station.coverageUsers / 1000).toFixed(0)}K abone kapsama
+                    </p>
+                    {planned && (
+                      <p className="mt-1.5 rounded-lg bg-navy-50 px-2 py-1 text-[11px] text-navy-700">
+                        <span className="font-semibold">{planned.plan.teamName ?? "Ekip"}</span> — {planned.stop.order}. durak
+                        · varış ~{format(planned.stop.etaArrival, "HH:mm")} · ~{planned.stop.workMinutes} dk çalışma
+                      </p>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
 
         {/* Saha ekipleri (us konumlari) */}
         {showTeams &&
@@ -369,40 +418,55 @@ export function OperationsMap({
               </Marker>
             ))}
 
-        {/* Rota planlari */}
-        {routedIncidents.map((incident) => {
-          const route = routes[incident.id];
+        {/* Ekip rota planlari (cok durakli) */}
+        {plans.map((plan) => {
+          const route = routes[plan.teamId];
           if (!route) return null;
-          const color = PRIORITY_COLORS[incident.priority];
-          const done = incident.status !== "ATANDI" && incident.status !== "YOLDA";
+          const color = PRIORITY_COLORS[plan.stops[0]?.incident.priority ?? "ORTA"];
+          const anyMoving = plan.stops.some((s) => s.incident.status === "YOLDA");
           return (
             <Polyline
-              key={`route-${incident.id}`}
+              key={`route-${plan.teamId}`}
               positions={route}
               pathOptions={{
                 color,
                 weight: 3.5,
-                opacity: done ? 0.35 : 0.8,
-                dashArray: incident.status === "ATANDI" ? "6 8" : undefined,
-                className: incident.status === "YOLDA" ? "nops-route-active" : undefined,
+                opacity: anyMoving ? 0.85 : 0.55,
+                dashArray: anyMoving ? undefined : "6 8",
+                className: anyMoving ? "nops-route-active" : undefined,
               }}
             />
           );
         })}
 
-        {/* Canli arac konumlari */}
-        {routedIncidents.map((incident) => {
-          const { position, moving, progress } = vehiclePosition(incident);
+        {/* Durak sira rozetleri (bir ekipte birden fazla vaka varsa) */}
+        {plans
+          .filter((plan) => plan.stops.length > 1)
+          .flatMap((plan) =>
+            plan.stops.map((stop) => (
+              <Marker
+                key={`stop-${plan.teamId}-${stop.incident.id}`}
+                position={[stop.incident.latitude!, stop.incident.longitude!]}
+                icon={stopOrderIcon(stop.order, PRIORITY_COLORS[stop.incident.priority])}
+                zIndexOffset={500}
+              >
+                <Tooltip direction="top" offset={[12, -18]}>
+                  <span className="font-sans text-[11px]">
+                    {stop.order}. durak · varış ~{format(stop.etaArrival, "HH:mm")} · ~{stop.workMinutes} dk çalışma
+                  </span>
+                </Tooltip>
+              </Marker>
+            ))
+          )}
+
+        {/* Canli arac konumlari (ekip basina tek arac) */}
+        {plans.map((plan) => {
+          const { position, moving, label } = vehicleForPlan(plan);
           return (
-            <Marker key={`vehicle-${incident.id}`} position={position} icon={vehicleIcon(moving)} zIndexOffset={600}>
+            <Marker key={`vehicle-${plan.teamId}`} position={position} icon={vehicleIcon(moving)} zIndexOffset={600}>
               <Tooltip direction="top" offset={[0, -14]}>
                 <span className="font-sans text-[11px] font-medium">
-                  {incident.assignedTeamName ?? "Saha ekibi"}
-                  {moving
-                    ? ` · yolda %${Math.round(progress * 100)}`
-                    : incident.status === "ATANDI"
-                      ? " · çıkışa hazırlanıyor"
-                      : " · sahada"}
+                  {plan.teamName ?? "Saha ekibi"} · {label}
                 </span>
               </Tooltip>
             </Marker>
@@ -488,7 +552,7 @@ export function OperationsMap({
               <span className="inline-block h-2 w-2 rounded-full bg-navy-800" /> Ekip
             </span>
           )}
-          {routedIncidents.length > 0 && <span className="text-navy-400">— rota · 🚐 canlı konum</span>}
+          {plans.length > 0 && <span className="text-navy-400">— rota planı · ① durak sırası · 🚐 canlı konum</span>}
         </div>
       </div>
     </div>

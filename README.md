@@ -44,7 +44,102 @@ Detaylar için: [Mimari Prensipler](./docs/ARCHITECTURE.md#2-mimari-prensipler-v
 [Servis Detayları](./docs/ARCHITECTURE.md#4-mikroservis-detayları) ·
 [Event Kataloğu](./EVENTS.md) · [Geliştirme Yol Haritası](./docs/ARCHITECTURE.md#15-aşamalı-geliştirme-yol-haritası)
 
+## Yapay Zekâ Mimarisi
+
+Case'in kalbi olan AI Service, tek bir model değil **üç ayrı ML modeli + bir LLM entegrasyonu +
+deterministik atama skorlaması**ndan oluşan katmanlı bir yapay zekâ mimarisi çalıştırır. Her
+bileşen ayrı bir problemi, o probleme uygun yöntemle çözer; hepsi bağımsızlık ilkesine uyar
+(herhangi biri devre dışı kalsa sistem çalışmaya devam eder).
+
+| # | Bileşen | Problem | Yöntem | Veri | Gerçek Sonuç |
+|---|---|---|---|---|---|
+| 1 | **Arıza Tahmini + Tür Sınıflandırma** (case 5.1–5.2) | Telemetriden arıza olasılığı ve türü | RandomForest (3 aday arasından 5-fold CV ile seçildi) + kural katmanı (hibrit) | Sentetik v2.1 — 1.500 örnek, gerçek İTÜ 5G ölçümleriyle kalibre | **Test macro-F1 0.957** |
+| 2 | **Çözüm Süresi (ETA) Regresyonu** | Ekip atandığında saha işi ne kadar sürecek? | Ridge (Ridge/RF/GB arasından CV MAE ile seçildi) | Sentetik — 2.400 örnek, latent parça değişkenli üretici süreç | **Test MAE 32.9 dk · R² 0.49** |
+| 3 | **Eskalasyon Riski** | Bu istasyondaki yeni arıza büyür mü? | RandomForest (class-weight dengeli) | **Gerçek veri: Telstra Network Disruptions (Kaggle)** — 7.381 örnek | **Test macro-F1 0.56 · kritik sınıf recall 0.82** |
+| 4 | **Şikayet Ön Analizi** | Müşterinin serbest metin şikayeti ne anlatıyor? | LLM — Google **Gemini 2.5 Flash-Lite** (yapılandırılmış JSON çıktı) | — (few-shot'sız, şema zorlamalı) | Muhtemel alan + olası neden + öneri + güven |
+| 5 | **Akıllı Saha Ekibi Ataması** (case 5.3) | En uygun ekip kim? | Deterministik skorlama: `uzmanlık×0.4 + mesafe×0.3 + kapasite×0.3` (Haversine) + ETA modeli entegrasyonu | Canlı ekip rosteri + iş yükü | Skor kırılımı UI'da ("Neden bu ekip?") |
+
+### Kullanılan Veri Setleri
+
+| Veri Seti | Kaynak | Kullanım |
+|---|---|---|
+| **Telstra Network Disruptions** | Kaggle — https://www.kaggle.com/c/telstra-recruiting-network (yerel kopya: `services/ai-service/data/telstra/`) | Avustralya'nın en büyük telekom operatörünün **gerçek** şebeke arıza/log verisi (7.381 eğitim örneği, 3 şiddet sınıfı). Eskalasyon riski modeli doğrudan bu veriyle eğitildi. Konum-tabanlı sızıntı (leakage) eğilimli özellikler bilinçli olarak dışlandı. |
+| **İTÜ Kampüsü 5G Saha Ölçümleri** | Turkcell CodeNight case ekinde sağlanan gerçek sürüş testi verisi (`docs/Raw/5G Saha Ölçüm Verileri/`) | 1.943 gerçek RSRP/RSRQ/SINR ölçümü. Sentetik telemetri üreticisinin NORMAL sınıf sinyal dağılımı bu veriden kalibre edildi (ortalama −92.6 dBm, medyan −87, σ 20.8 → üreticide N(−85,10)). |
+| **Sentetik Telemetri v2.1** | `scripts/generate_dataset.py` → `data/synthetic_telemetry.csv` | 1.500 örnek (250/sınıf); %12'si karışabilir sınıf çiftlerinin sınır bölgesinde üretilen "zor örnek" — metriklerin şişmesini önler. Deterministik seed ile tekrarlanabilir. |
+| **Sentetik Çözüm Süresi** | `scripts/generate_dataset.py` → `data/synthetic_resolution.csv` | 2.400 örnek; arıza türü taban süresi, öncelik kaynak çarpanı, gece/hafta sonu etkisi ve **modele verilmeyen** latent yedek-parça değişkeni (gerçekçi indirgenemez hata payı). |
+
+Neden hâlâ sentetik veri de var? Telemetri şeması (sinyal/paket kaybı/sıcaklık/güç) ile birebir
+örtüşen, etiketli ve halka açık bir baz istasyonu arıza veri seti bulunmuyor — bu yüzden
+telemetri sınıflandırıcısı gerçek ölçümlerle **kalibre edilmiş** sentetik veriyle, eskalasyon
+modeli ise **doğrudan gerçek Kaggle verisiyle** eğitildi. Tüm eğitim verileri repoda, tüm
+eğitim script'leri tek komutla çalıştırılabilir durumda:
+
+```bash
+cd services/ai-service
+python -m scripts.generate_dataset        # sentetik veri setlerini yeniden üret
+python -m scripts.train_model             # 1) arıza türü sınıflandırıcısı
+python -m scripts.train_eta_model         # 2) çözüm süresi (ETA) regresyonu
+python -m scripts.train_severity_model    # 3) eskalasyon riski (Telstra gerçek verisi)
+```
+
+Her script 3 aday modeli 5-fold cross-validation ile karşılaştırır, en iyisini seçer ve bir
+**kalite kapısından** (macro-F1 / MAE eşiği) geçmeden asla üretim model dosyasının üstüne
+yazmaz. Tüm gerçek metrikler `services/ai-service/models/*_metrics.json` dosyalarında; metodoloji,
+model karşılaştırma tabloları, confusion matrix ve bilinçli sınırlamalar
+[`ML_APPROACH.md`](./services/ai-service/ML_APPROACH.md)'dedir. AI doğruluk takibi (case 5.4)
+canlıdır: operatör tür değiştirdiğinde yanlış sınıflandırma kaydedilir, süpervizör panelinde
+genel + kategori bazlı doğruluk gösterilir.
+
+### Gemini API Anahtarı Kurulumu (Şikayet Ön Analizi)
+
+Müşteri, arıza bildirirken serbest metin şikayet yazabilir; bu metin düşük maliyetli
+**gemini-2.5-flash-lite** modeline gönderilir ve form yanında "büyük ihtimalle … alanında sorun
+var" tarzı bir ön analiz (muhtemel alan + olası neden + öneri + güven) gösterilir. Analiz vakaya
+kaydedilir ve NOC/teknisyen detay ekranında da görünür.
+
+Anahtar **repoda tutulmaz** (güvenlik: `secrets/` dizini `.gitignore`'dadır ve anahtar koda asla
+gömülmez). Kurulum:
+
+1. https://aistudio.google.com/apikey adresinden ücretsiz bir Gemini API anahtarı alın.
+2. Anahtarı tek satır olarak şu dosyaya yazın: `secrets/gemini_api_key.txt`
+3. `docker compose up -d ai-service` ile servisi yeniden başlatın.
+
+Anahtar girilmezse özellik **zarifçe kapalı** kalır: form çalışmaya devam eder, yalnızca "AI Ön
+Analiz" düğmesi hata mesajı döndürür; bildirim/atama akışının hiçbir adımı etkilenmez. LLM
+çıktısı yalnızca bilgilendirme amaçlıdır — telemetri tabanlı ML sınıflandırıcısının ve atama
+kararlarının yerine geçmez (prompt-injection yüzeyi de bu izolasyonla sınırlandırılmıştır).
+
+## Rol Bazlı Görünürlük (case 3.3 yetki matrisi)
+
+| Ekran | Müşteri | Saha Teknisyeni | NOC | Süpervizör | Admin |
+|---|---|---|---|---|---|
+| Arıza bildir (+ AI ön analiz) | ✓ | — | — | — | — |
+| Vakalarım (kendi kayıtları) | ✓ | ✓ (atanan) | ✓ (tümü) | ✓ (tümü) | ✓ (tümü) |
+| Operasyon haritası + rota programı | — | ✓ (kendi rotası) | ✓ | ✓ | ✓ |
+| Durum geçişi / çözüm notu | — | ✓ | ✓ (kapatma) | ✓ | — |
+| Manuel atama | — | — | — | ✓ | — |
+| Dashboard (SLA, AI doğruluk, performans) | — | — | — | ✓ | ✓ |
+| Liderlik tablosu / profil-rozet | — | ✓ | ✓ | ✓ | — |
+| Personel yönetimi + Audit log | — | — | — | — | ✓ |
+
+Yetkiler yalnızca menüde gizlenmez; her endpoint sunucu tarafında rol guard'ı ve sahiplik
+kontrolüyle korunur (yetkisiz istek → 403 + audit log).
+
 ## Proje Durumu
+
+**Faz 6 — AI Derinleştirme + Turkcell Kurumsal Kimlik:**
+
+- ✅ **Üçüncü ML modeli:** Eskalasyon riski — **gerçek Kaggle verisiyle** (Telstra) eğitildi;
+  tahmin yanıtında ve müşteri sonuç panelinde DUSUK/ORTA/YUKSEK göstergesi
+- ✅ **Gemini LLM şikayet ön analizi:** yapılandırılmış JSON çıktı, Docker secret ile anahtar
+  yönetimi, zarif kapanma
+- ✅ **Gerçek veri kalibrasyonu:** İTÜ 5G sürüş testi ölçümleriyle sentetik üretici kalibre edildi
+- ✅ **Çoklu-durak rota planlama:** Bir ekipte birden fazla vaka varsa en-yakın-komşu turu +
+  durak sırası rozetleri + her istasyona planlanan varış/kalış/ayrılış saatleri (haritada ve
+  "Rota Programı" panelinde); canlı araç animasyonu artık ekip başına
+- ✅ **Turkcell kurumsal kimlik:** resmi sarı (#FFC900) + lacivert palet, amblem, favicon,
+  giriş/kenar çubuğu markalama
+- ✅ **Admin görünürlüğü genişletildi:** dashboard + tüm vakalar (salt-okur), case matrisiyle uyumlu
 
 **Faz 5 — Canlı Saha Operasyonu (case kapsamının ötesi):**
 
@@ -159,6 +254,10 @@ Kafka, Prometheus/Alertmanager) ve gerekçeleri için bkz. `docs/ARCHITECTURE.md
 
 Bu, `secrets/` dizininde tüm DB şifrelerini, RabbitMQ kimlik bilgisini, dahili API anahtarını,
 JWT RS256 anahtar çiftini ve Grafana admin şifresini üretir. Bu dizin repoya dahil edilmez.
+
+> **Gemini (opsiyonel):** Müşteri şikayeti AI ön analizi için kendi Gemini anahtarınızı
+> `secrets/gemini_api_key.txt` dosyasına yazın (bkz. yukarıda "Gemini API Anahtarı Kurulumu").
+> Boş bırakılırsa sistem tam çalışır, yalnızca bu özellik kapalı kalır.
 
 **2. Sistemi ayağa kaldır:**
 

@@ -14,6 +14,14 @@ class Settings:
     model_version = os.environ.get("MODEL_VERSION", "v1")
     eta_model_path = os.environ.get("ETA_MODEL_PATH", "./models/eta_model_v1.joblib")
     eta_model_version = os.environ.get("ETA_MODEL_VERSION", "v1")
+
+    # Ucuncu model: eskalasyon riski (Telstra/Kaggle gercek verisiyle egitildi)
+    severity_model_path = os.environ.get("SEVERITY_MODEL_PATH", "./models/severity_model_v1.joblib")
+    severity_model_version = os.environ.get("SEVERITY_MODEL_VERSION", "v1")
+
+    # Gemini LLM — musteri sikayet metni on analizi (opsiyonel; anahtar yoksa ozellik kapali)
+    gemini_api_key = read_secret("GEMINI_API_KEY", "")
+    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
     min_acceptable_macro_f1 = float(os.environ.get("MIN_ACCEPTABLE_MACRO_F1", "0.85"))
 
     threshold_izle = float(os.environ.get("THRESHOLD_IZLE", "0.40"))

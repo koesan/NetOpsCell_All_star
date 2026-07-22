@@ -49,9 +49,18 @@ def _clip(value: float, low: float, high: float) -> float:
 # ---------------------------------------------------------------------------
 # 1) Siniflandirma veri seti
 # ---------------------------------------------------------------------------
+#
+# GERCEK VERI KALIBRASYONU: NORMAL sinifinin sinyal dagilimi, repodaki gercek ITU
+# kampusu 5G saha olcumlerinden kalibre edilmistir
+# (docs/Raw/5G Saha Olcum Verileri (GPS mevcut)/5G_DL.xlsx, n=1943 surus-testi ornegi):
+#   NR_UE_RSRP_0: ortalama -92.6 dBm, medyan -87 dBm, std 20.8, aralik [-150.6, -50.8]
+# Onceki v1 varsayimi (N(-70,5)) gercek sahaya gore fazla iyimserdi; v2.1'de saglikli
+# istasyon dagilimi medyan cevresinde N(-85, 10) olarak guncellendi (uc zayif olcumler
+# kapsama kenarindan gelir, istasyon sagligini temsil etmez — bu yuzden std daraltildi,
+# gerekce ML_APPROACH.md Bolum 2'de).
 
 def _gen_normal(rng: random.Random) -> dict:
-    signal = _clip(rng.gauss(-70, 5), -110, -50)
+    signal = _clip(rng.gauss(-85, 10), -110, -55)
     packet_loss = _clip(rng.gauss(1, 0.5), 0, 100)
     return {
         "signal_strength": round(signal, 2),

@@ -3,21 +3,21 @@
   "selected_model": "RandomForestClassifier",
   "cross_validation": {
     "LogisticRegression": {
-      "mean_macro_f1": 0.9664970331341957,
-      "std": 0.013149709615396155
+      "mean_macro_f1": 0.9674094813233889,
+      "std": 0.009634766879460046
     },
     "RandomForestClassifier": {
-      "mean_macro_f1": 0.9733015502016462,
-      "std": 0.0050102665060298346
+      "mean_macro_f1": 0.975845848965886,
+      "std": 0.0031106053940061626
     },
     "GradientBoostingClassifier": {
-      "mean_macro_f1": 0.9716100564583577,
-      "std": 0.011095968862074935
+      "mean_macro_f1": 0.9750016045508595,
+      "std": 0.009825194345933461
     }
   },
   "test_macro_f1": 0.9570084249465695,
   "min_acceptable_macro_f1": 0.85,
-  "dataset_fingerprint": "434e6efbdcb582fa",
+  "dataset_fingerprint": "966cb3bf0a26332a",
   "classification_report": {
     "NORMAL": {
       "precision": 0.9361702127659575,
@@ -132,47 +132,47 @@
   "feature_importance": [
     [
       "temperature",
-      0.21972412318041779
+      0.2233061511211577
     ],
     [
       "packet_loss",
-      0.15582821300004143
+      0.16142970793116837
     ],
     [
       "packet_loss_ma",
-      0.13719003193424617
+      0.14505473065010166
     ],
     [
       "power_status_NORMAL",
-      0.12829022807238444
+      0.12418902587613767
     ],
     [
       "signal_strength",
-      0.10495245286577362
+      0.08143785533886387
     ],
     [
       "temperature_trend",
-      0.08693398759640474
+      0.07893730037571003
     ],
     [
       "signal_delta",
-      0.0682067890486509
+      0.07604825660811353
     ],
     [
       "power_status_OUTAGE",
-      0.03338788553890013
-    ],
-    [
-      "historical_fault_count",
-      0.025111613550784458
+      0.03908310984635594
     ],
     [
       "fault_recency_score",
-      0.023633090041895784
+      0.026077682933766062
+    ],
+    [
+      "historical_fault_count",
+      0.02436975144864597
     ],
     [
       "power_status_UNSTABLE",
-      0.01674158517050044
+      0.02006642786997936
     ]
   ],
   "training_samples": 1200,

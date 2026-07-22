@@ -140,6 +140,8 @@ export class IncidentsService {
       priority,
       status: IncidentStatus.YENI,
       customerId,
+      customerNote: dto.description ?? null,
+      complaintAnalysis: dto.complaintAnalysis ?? null,
       aiProbability,
       slaDeadline: this.slaDeadlineFor(priority),
     });

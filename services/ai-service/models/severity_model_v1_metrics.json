@@ -1,0 +1,89 @@
+{
+  "model_version": "v1",
+  "task": "escalation_risk_classification",
+  "dataset": "Telstra Network Disruptions (Kaggle) — https://www.kaggle.com/c/telstra-recruiting-network",
+  "selected_model": "RandomForestClassifier",
+  "cross_validation": {
+    "LogisticRegression": {
+      "mean_macro_f1": 0.4659130302033706,
+      "std": 0.01043379997185286
+    },
+    "RandomForestClassifier": {
+      "mean_macro_f1": 0.5677633347336092,
+      "std": 0.010929316675403474
+    },
+    "GradientBoostingClassifier": {
+      "mean_macro_f1": 0.5078784900113726,
+      "std": 0.009991968637137218
+    }
+  },
+  "test_macro_f1": 0.5612445494658731,
+  "test_accuracy": 0.5937711577522004,
+  "test_logloss": 0.7807419593572005,
+  "classification_report": {
+    "0": {
+      "precision": 0.8818635607321131,
+      "recall": 0.5538140020898642,
+      "f1-score": 0.6803594351732991,
+      "support": 957.0
+    },
+    "1": {
+      "precision": 0.407871198568873,
+      "recall": 0.608,
+      "f1-score": 0.48822269807280516,
+      "support": 375.0
+    },
+    "2": {
+      "precision": 0.3753943217665615,
+      "recall": 0.8206896551724138,
+      "f1-score": 0.5151515151515151,
+      "support": 145.0
+    },
+    "accuracy": 0.5937711577522004,
+    "macro avg": {
+      "precision": 0.5550430270225158,
+      "recall": 0.6608345524207593,
+      "f1-score": 0.5612445494658731,
+      "support": 1477.0
+    },
+    "weighted avg": {
+      "precision": 0.7117991223697435,
+      "recall": 0.5937711577522004,
+      "f1-score": 0.6153584705044812,
+      "support": 1477.0
+    }
+  },
+  "feature_importance": [
+    [
+      "log_volume_sum",
+      0.4849600231165701
+    ],
+    [
+      "severity_type_ord",
+      0.18075314961638034
+    ],
+    [
+      "event_count",
+      0.08088186940841065
+    ],
+    [
+      "log_count",
+      0.07614022194763695
+    ],
+    [
+      "distinct_event_types",
+      0.07480302647801643
+    ],
+    [
+      "distinct_log_features",
+      0.0731309413296793
+    ],
+    [
+      "resource_count",
+      0.029330768103306107
+    ]
+  ],
+  "dataset_fingerprint": "02ecda34af869410",
+  "training_samples": 5904,
+  "test_samples": 1477
+}

@@ -79,8 +79,24 @@ tech_email() {
 say "Telemetri #1 — KRITIK guc kesintisi @ BTS-IST-010 Kadikoy Iskele (otomatik atama beklenir)"
 telemetry "$CUST" '{"stationCode":"BTS-IST-010","latitude":40.9928,"longitude":29.0253,"signalStrength":-106,"packetLoss":48,"temperature":37,"powerStatus":"OUTAGE"}' >/dev/null
 
-say "Telemetri #2 — asiri isinma @ BTS-IST-003 Taksim Meydan"
-telemetry "$CUST" '{"stationCode":"BTS-IST-003","latitude":41.0370,"longitude":28.9850,"signalStrength":-82,"packetLoss":6,"temperature":91,"powerStatus":"NORMAL"}' >/dev/null
+say "Telemetri #2 — asiri isinma @ BTS-IST-003 Taksim Meydan (musteri sikayeti + Gemini on analizi ile)"
+DESC="Taksim'deki magazamizda internet gun icinde surekli yavasliyor, ogleden sonra tamamen kopuyor. Telefon cekiyor ama mobil veri neredeyse hic calismiyor."
+ANALYSIS=$(curl -sf -X POST "$GW/api/v1/ai/analyze-complaint" -H "Authorization: Bearer $CUST" -H 'Content-Type: application/json' \
+  -d "{\"text\":\"$DESC\"}" | python3 -c "import json,sys;print(json.dumps(json.load(sys.stdin)['data'],ensure_ascii=False))" 2>/dev/null || echo "")
+if [ -n "$ANALYSIS" ]; then
+  say "  Gemini analizi alindi: $(python3 -c "import json,sys;d=json.loads(sys.argv[1]);print(d['muhtemel_alan'],'-',d['olasi_neden'][:60])" "$ANALYSIS" 2>/dev/null || true)"
+fi
+PAYLOAD=$(python3 - "$DESC" "$ANALYSIS" << 'PYEOF'
+import json, sys
+body = {"stationCode":"BTS-IST-003","latitude":41.0370,"longitude":28.9850,
+        "signalStrength":-82,"packetLoss":6,"temperature":91,"powerStatus":"NORMAL",
+        "description":sys.argv[1]}
+if sys.argv[2]:
+    body["complaintAnalysis"] = json.loads(sys.argv[2])
+print(json.dumps(body, ensure_ascii=False))
+PYEOF
+)
+telemetry "$CUST" "$PAYLOAD" >/dev/null
 
 say "Telemetri #3 — baglanti kaybi @ BTS-IST-014 Atasehir Finans Merkezi"
 telemetry "$CUST" '{"stationCode":"BTS-IST-014","latitude":40.9923,"longitude":29.1274,"signalStrength":-105,"packetLoss":52,"temperature":36,"powerStatus":"NORMAL"}' >/dev/null

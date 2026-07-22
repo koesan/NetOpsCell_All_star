@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { AlertTriangle, MapPin, Radio, Send, Thermometer, Wifi, Zap } from "lucide-react";
+import { AlertTriangle, MapPin, Radio, Send, Sparkles, Thermometer, TrendingUp, Wifi, Zap } from "lucide-react";
 import { toast } from "sonner";
+import type { ComplaintAnalysis, EscalationRisk } from "../../types";
+import { FaultTypeBadge } from "../../components/ui/Badge";
 import { api, extractErrorMessage } from "../../lib/api";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { Card, CardBody } from "../../components/ui/Card";
@@ -40,8 +42,31 @@ const PRESETS: { label: string; icon: typeof Zap; values: Partial<TelemetryForm>
 export function NewIncidentPage() {
   const { data: stations } = useStations();
   const [form, setForm] = useState<TelemetryForm>(DEFAULTS);
-  const [result, setResult] = useState<null | { aiAvailable: boolean; message?: string; incident?: unknown; prediction?: { probability: number; recommendation: string } }>(null);
+  const [description, setDescription] = useState("");
+  const [analysis, setAnalysis] = useState<ComplaintAnalysis | null>(null);
+  const [result, setResult] = useState<null | {
+    aiAvailable: boolean;
+    message?: string;
+    incident?: unknown;
+    prediction?: { probability: number; recommendation: string; escalation_risk?: EscalationRisk | null };
+  }>(null);
   const queryClient = useQueryClient();
+
+  // Gemini LLM on analizi: musteri sikayet metnini yazinca "AI On Analiz" ile
+  // muhtemel ariza alani + olasi neden + oneri aninda gosterilir (bkz. AI Service
+  // /api/v1/ai/analyze-complaint). Analiz bildirimle birlikte vakaya da kaydedilir.
+  const analyzeMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post("/api/v1/ai/analyze-complaint", {
+        text: description,
+        station_code: form.stationCode || undefined,
+        telemetry_summary: `sinyal ${form.signalStrength} dBm, paket kaybı %${form.packetLoss}, sıcaklık ${form.temperature}°C, güç ${form.powerStatus}`,
+      });
+      return response.data.data as ComplaintAnalysis;
+    },
+    onSuccess: (data) => setAnalysis(data),
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -53,6 +78,8 @@ export function NewIncidentPage() {
         packetLoss: parseFloat(form.packetLoss),
         temperature: parseFloat(form.temperature),
         powerStatus: form.powerStatus,
+        ...(description.trim().length >= 10 ? { description: description.trim() } : {}),
+        ...(analysis ? { complaintAnalysis: analysis } : {}),
       });
       return response.data.data;
     },
@@ -159,6 +186,57 @@ export function NewIncidentPage() {
                 <option value="OUTAGE">Kesinti</option>
               </Select>
 
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-navy-600">
+                  Sorun Açıklaması <span className="font-normal text-navy-400">(opsiyonel — AI ön analiz için)</span>
+                </label>
+                <textarea
+                  className="min-h-[88px] w-full rounded-xl border border-navy-100 bg-white p-3 text-sm text-navy-900 placeholder:text-navy-300 focus:outline-none focus:ring-4 focus:ring-navy-100"
+                  placeholder="Örn: Evde internet sürekli kopuyor, akşam saatlerinde televizyon donuyor, telefonla arama yapamıyorum..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={2000}
+                />
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={description.trim().length < 10}
+                    loading={analyzeMutation.isPending}
+                    onClick={() => analyzeMutation.mutate()}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" /> AI Ön Analiz
+                  </Button>
+                  <span className="text-[11px] text-navy-300">{description.length}/2000</span>
+                </div>
+
+                {analysis && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 rounded-xl border border-brand-yellow/50 bg-brand-yellow/10 p-3.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-navy-900">
+                        <Sparkles className="h-3.5 w-3.5 text-navy-700" /> AI Sorun Tahmini
+                      </p>
+                      <FaultTypeBadge faultType={analysis.muhtemel_alan} />
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-navy-700">{analysis.olasi_neden}</p>
+                    <p className="mt-1.5 text-xs leading-relaxed text-navy-600">
+                      <span className="font-semibold">Öneri:</span> {analysis.oneri}
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white">
+                        <div className="h-full rounded-full bg-navy-700" style={{ width: `${Math.round(analysis.guven * 100)}%` }} />
+                      </div>
+                      <span className="text-[10px] font-medium text-navy-500">güven %{Math.round(analysis.guven * 100)}</span>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+
               <div className="col-span-2 mt-2">
                 <Button type="submit" size="lg" loading={mutation.isPending} className="w-full">
                   <Send className="h-4 w-4" /> Telemetriyi Gönder
@@ -176,7 +254,21 @@ export function NewIncidentPage() {
   );
 }
 
-function ResultPanel({ result }: { result: null | { aiAvailable: boolean; message?: string; prediction?: { probability: number; recommendation: string } } }) {
+const RISK_STYLES: Record<string, string> = {
+  DUSUK: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  ORTA: "bg-amber-50 text-amber-700 border-amber-200",
+  YUKSEK: "bg-red-50 text-red-700 border-red-200",
+};
+
+function ResultPanel({
+  result,
+}: {
+  result: null | {
+    aiAvailable: boolean;
+    message?: string;
+    prediction?: { probability: number; recommendation: string; escalation_risk?: EscalationRisk | null };
+  };
+}) {
   if (!result) {
     return (
       <Card className="flex h-full items-center justify-center p-8 text-center">
@@ -220,6 +312,17 @@ function ResultPanel({ result }: { result: null | { aiAvailable: boolean; messag
                   transition={{ duration: 0.6, ease: "easeOut" }}
                 />
               </div>
+            </div>
+          )}
+
+          {result.prediction?.escalation_risk && (
+            <div className={`mt-4 rounded-xl border px-3 py-2.5 ${RISK_STYLES[result.prediction.escalation_risk.risk] ?? RISK_STYLES.ORTA}`}>
+              <p className="flex items-center gap-1.5 text-xs font-semibold">
+                <TrendingUp className="h-3.5 w-3.5" /> Eskalasyon Riski: {result.prediction.escalation_risk.risk}
+              </p>
+              <p className="mt-0.5 text-[11px] opacity-80">
+                İstasyonun arıza geçmişi profiline göre — gerçek şebeke verisiyle (Telstra) eğitilmiş model.
+              </p>
             </div>
           )}
         </CardBody>

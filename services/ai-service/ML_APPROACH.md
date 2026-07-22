@@ -47,8 +47,16 @@ karar sınırlarını öğrenmesini zorlar ve test metriklerinin yapay biçimde 
 Üretim deterministik bir `random_seed` ile yapılır — aynı komut her zaman aynı veri setini
 üretir (tekrarlanabilirlik ve savunulabilirlik için).
 
+**Gerçek veriyle kalibrasyon (v2.1):** NORMAL sınıfın sinyal dağılımı, repodaki **gerçek İTÜ
+kampüsü 5G sürüş testi ölçümlerinden** kalibre edilmiştir (`docs/Raw/5G Saha Ölçüm Verileri/
+5G_DL.xlsx`, n=1.943): RSRP ortalama −92.6 dBm, medyan −87, σ 20.8, aralık [−150.6, −50.8].
+Önceki N(−70,5) varsayımı gerçek sahaya göre fazla iyimserdi; v2.1'de sağlıklı istasyon medyan
+çevresinde N(−85,10) olarak güncellendi (uç zayıf ölçümler kapsama kenarından gelir, istasyon
+sağlığını temsil etmez — bu yüzden std daraltıldı).
+
 Aynı script ikinci bir veri seti daha üretir: `data/synthetic_resolution.csv` (2.400 örnek) —
-çözüm süresi regresyon modeli için, bkz. Bölüm 10.
+çözüm süresi regresyon modeli için, bkz. Bölüm 10. Üçüncü model (eskalasyon riski) ise
+**gerçek Kaggle verisiyle** eğitilir: bkz. Bölüm 11.
 
 ## 3. Model Seçimi
 
@@ -208,10 +216,59 @@ paylaşır — haritadaki ilerleme ile ETA tutarlıdır. `/api/v1/ai/assign` yan
 `work_minutes`, `total_eta_minutes` alanlarını döner; manuel atama için bağımsız
 `POST /api/v1/ai/estimate` endpoint'i vardır.
 
-## 11. Bilinçli Sınırlamalar
+## 11. Üçüncü Model: Eskalasyon Riski (GERÇEK Kaggle Verisi — Telstra)
 
-- Veri setleri sentetik olduğu için gerçek şebeke verisindeki dağılım kaymalarını (distribution
-  shift) yansıtmaz; üretime geçişte gerçek etiketli veriyle yeniden eğitim şarttır.
+**Veri seti:** [Telstra Network Disruptions](https://www.kaggle.com/c/telstra-recruiting-network)
+(Kaggle yarışması) — Avustralya'nın en büyük telekom operatörünün gerçek şebeke log/arıza verisi.
+Yerel kopya: `data/telstra/` (train.csv 7.381 örnek + event/log/resource/severity tabloları).
+Hedef: `fault_severity` ∈ {0: arıza yok/önemsiz (%64.8), 1: lokal arıza (%25.4), 2: kritik (%9.8)}.
+
+**Özellik mühendisliği:** id başına olay/log/kaynak tablolarından toplam sayı, çeşitlilik ve
+hacim özellikleri (`event_count`, `distinct_event_types`, `log_count`, `distinct_log_features`,
+`log_volume_sum`, `resource_count`, `severity_type_ord`). Yarışmada skoru şişiren
+**konum-encoding gibi sızıntı (leakage) eğilimli özellikler bilinçli olarak dışlandı** — model
+üretimde istasyon geçmişinden türetilebilen özelliklerle sınırlı tutuldu.
+
+**Gerçek sonuçlar** (`models/severity_model_v1_metrics.json`, 5-fold CV + %20 stratified test):
+
+| Model | CV macro-F1 |
+|---|---|
+| **RandomForest (seçilen, class_weight=balanced)** | **0.568** |
+| GradientBoosting | 0.508 |
+| LogisticRegression | 0.466 |
+
+- **Test macro-F1 0.561 · accuracy 0.594 · logloss 0.781**
+- Kritik sınıf (2) **recall 0.82** — `class_weight=balanced` tercihiyle bilinçli olarak "kritik
+  arızayı kaçırmamak" optimize edildi (operasyonel maliyet asimetrisi: kaçan kritik arıza,
+  yanlış alarmdan çok daha pahalıdır). Bunun bedeli genel accuracy'nin düşmesidir ve bu takas
+  bilinçlidir.
+- **Alan uyarlaması (domain adaptation) sınırı — dürüst beyan:** model Telstra'nın log-tabanlı
+  özellikleriyle eğitilmiştir; NetOpsCell çalışma anında aynı ölçekte benzer anlamlı özellikleri
+  istasyonun tahmin geçmişinden türetir (eşleme `app/ml/severity.py` docstring'inde satır satır
+  belgelidir). Bu bir "risk göstergesi"dir: SLA önceliğini değiştirmez, NOC'a yardımcı sinyal
+  olarak panelde gösterilir.
+
+## 12. LLM Katmanı: Müşteri Şikayeti Ön Analizi (Gemini)
+
+Müşterinin serbest metin şikayeti (`"evde internet sürekli kopuyor..."`), düşük maliyetli
+**gemini-2.5-flash-lite** modeline yapılandırılmış çıktı şemasıyla (`responseSchema`) gönderilir;
+model muhtemel arıza alanı (6 sınıftan biri), olası neden, öneri ve güven skoru döner
+(`app/llm/gemini.py`, `POST /api/v1/ai/analyze-complaint`).
+
+Tasarım kararları:
+- **ML'in yerine geçmez:** LLM çıktısı yalnızca müşteri deneyimi + NOC bağlamı içindir;
+  sınıflandırma/öncelik/atama kararları telemetri tabanlı modellerden gelir. Bu izolasyon aynı
+  zamanda prompt-injection etki alanını daraltır (müşteri metni "güvenilmeyen girdi" bloğunda,
+  talimatlar sabit sistem prompt'unda).
+- **Zarif kapanma:** API anahtarı Docker secret'tır (`GEMINI_API_KEY_FILE`); tanımsızsa veya
+  çağrı 8 sn'de yanıt vermezse özellik sessizce devre dışı kalır, bildirim akışı asla bloke olmaz.
+- **Maliyet:** flash-lite + kısa yapılandırılmış çıktı ≈ istek başına ~300-500 token.
+
+## 13. Bilinçli Sınırlamalar
+
+- Sentetik veri setleri gerçek şebeke verisindeki dağılım kaymalarını (distribution
+  shift) tam yansıtmaz; sinyal dağılımı gerçek İTÜ 5G sürüş testi ölçümleriyle kalibre
+  edilmiştir (Bölüm 2) ancak üretime geçişte gerçek etiketli veriyle yeniden eğitim şarttır.
 - ETA modeli gerçekleşen süre geri beslemesi toplamaz (kapanan vakaların gerçek süreleri ile
   periyodik yeniden eğitim, üretim yol haritasındadır); şu an `departedAt/arrivedAt` zaman
   damgaları Incident Service'te bu amaçla kaydedilmektedir.

@@ -34,6 +34,7 @@ eklendi (bkz. Test bölümü). Metodoloji için bkz. [`ML_APPROACH.md`](./ML_APP
 | POST | `/api/v1/ai/assign` | Akıllı saha ekibi ataması (skorlama + ETA kırılımı + alternatif adaylar) |
 | POST | `/api/v1/ai/estimate` | Çözüm süresi tahmini — ikinci ML modeli (regresyon); manuel atamada Incident Service çağırır |
 | GET | `/api/v1/ai/teams` | Saha ekibi rosteri + anlık iş yükü (operasyon haritası katmanı) |
+| POST | `/api/v1/ai/analyze-complaint` | Müşteri şikayet metni ön analizi — Gemini LLM (anahtar yoksa 503, zarif kapanma) |
 | GET | `/api/v1/ai/accuracy` | Genel doğruluk oranı (Süpervizör dashboard) |
 | GET | `/api/v1/ai/accuracy/by-category` | Kategori bazlı doğruluk kırılımı (bonus) |
 | POST | `/internal/classification-changed` | Incident Service'ten yanlış sınıflandırma bildirimi |

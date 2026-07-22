@@ -14,12 +14,21 @@ class TelemetryIn(BaseModel):
     incident_id: Optional[str] = None
 
 
+class EscalationRisk(BaseModel):
+    """Ucuncu model (Telstra/Kaggle gercek verisi) ciktisi — bkz. app/ml/severity.py."""
+
+    risk: str  # DUSUK | ORTA | YUKSEK
+    probabilities: dict[str, float]
+    model_version: str
+
+
 class PredictResponse(BaseModel):
     probability: float
     fault_type: Optional[str]
     recommendation: str
     priority_hint: str
     model_version: str
+    escalation_risk: Optional[EscalationRisk] = None
 
 
 class AssignRequest(BaseModel):

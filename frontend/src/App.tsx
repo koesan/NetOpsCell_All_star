@@ -40,13 +40,14 @@ function App() {
               <Route path="/saha/profil" element={<ProfilePage />} />
             </Route>
 
-            <Route element={<ProtectedRoute allow={["NOC_OPERATORU", "SUPERVIZOR"]} />}>
+            {/* Case 3.3 yetki matrisi: NOC/Supervizor tum vakalari yonetir; Admin salt-okur gorunurluk alir */}
+            <Route element={<ProtectedRoute allow={["NOC_OPERATORU", "SUPERVIZOR", "ADMIN"]} />}>
               <Route path="/operasyon/vakalar" element={<NocIncidentsPage />} />
               <Route path="/operasyon/vakalar/:id" element={<IncidentDetailPage />} />
               <Route path="/operasyon/liderlik" element={<LeaderboardPage />} />
             </Route>
 
-            <Route element={<ProtectedRoute allow={["SUPERVIZOR"]} />}>
+            <Route element={<ProtectedRoute allow={["SUPERVIZOR", "ADMIN"]} />}>
               <Route path="/operasyon/dashboard" element={<DashboardPage />} />
             </Route>
 

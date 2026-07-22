@@ -58,4 +58,14 @@ else
   echo "  atlaniyor (zaten var): jwt_private_key.pem"
 fi
 
+# Gemini API anahtari disaridan alinir (Google AI Studio) — burada uretilemez.
+# Bos placeholder olusturulur ki compose secret mount'u hata vermesin; anahtar
+# eklenmezse LLM sikayet analizi ozelligi zarifce kapali kalir (bkz. README "Gemini API").
+if [ ! -f "$SECRETS_DIR/gemini_api_key.txt" ]; then
+  : > "$SECRETS_DIR/gemini_api_key.txt"
+  echo "  olusturuldu: gemini_api_key.txt (BOS - kendi Gemini anahtarinizi bu dosyaya yazin)"
+else
+  echo "  atlaniyor (zaten var): gemini_api_key.txt"
+fi
+
 echo "Tamamlandi. Simdi: docker compose up --build"
