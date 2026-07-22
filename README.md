@@ -109,34 +109,37 @@ Analiz" düğmesi hata mesajı döndürür; bildirim/atama akışının hiçbir 
 çıktısı yalnızca bilgilendirme amaçlıdır — telemetri tabanlı ML sınıflandırıcısının ve atama
 kararlarının yerine geçmez (prompt-injection yüzeyi de bu izolasyonla sınırlandırılmıştır).
 
-### Telegram OTP Kurulumu (Gerçek Doğrulama Kodu Teslimatı)
+### Müşteri OTP Doğrulaması
 
-Müşteri girişi artık **gerçekten çalışan** bir kanaldan doğrulama kodu alır: kod hiçbir zaman
-API yanıtında veya arayüzde görünmez, yalnızca müşterinin bağladığı Telegram sohbetine
-gönderilir. SMS (Twilio vb.) ücretli bir hesap, WhatsApp Business API ise Meta onayı
-gerektirdiğinden; **Telegram Bot API** ücretsiz ve iki dakikada kurulabilir olduğu için tercih
-edildi. Sistem herhangi bir genel-erişilebilir URL/webhook gerektirmez — long-polling ile
-çalışır, Docker Compose gibi kapalı ağlarda da sorunsuz çalışır.
+Case, OTP için simülasyon (sabit kod) kabul eder. Bu proje iki kademeli bir teslimat
+stratejisi uygular:
 
-**Akış:** Müşteri telefon numarasını girer → Telegram'a henüz bağlı değilse tek seferlik bir
-bağlantı düğmesi gösterilir → Telegram'da "Başlat"a basar → uygulama otomatik olarak devam eder
-→ doğrulama kodu **gerçekten** o sohbete gönderilir → müşteri kodu girer.
+1. **Müşteri kayıt sırasında e-posta girdiyse VE SMTP yapılandırılmışsa:** kod **gerçekten**
+   o adrese gönderilir (rastgele 4 haneli), API yanıtında hiçbir zaman dönmez.
+2. **Aksi halde** (e-posta yok veya SMTP yapılandırılmamış): müşterinin kodu başka hiçbir
+   kanaldan alma imkânı olmadığından, doğrulama adımının (case gereği zorunlu) engellenmemesi
+   için kod **web arayüzünde gösterilir**.
 
-Kurulum:
+Her iki durumda da üretilen kod, veritabanında **müşteri kaydıyla ilişkili** olarak saklanır
+(`otp_codes` tablosunda `userId` + `gsm`, bkz. `src/entities/otp-code.entity.ts`) — sunucu
+tarafında hangi kodun hangi müşteriye ait olduğu her zaman izlenebilir. Doğrulama adımı her
+zaman zorunludur; doğru kod girilmeden giriş yapılamaz. Kod `OTP_FIXED_CODE` ortam
+değişkeniyle değiştirilebilir (varsayılan `1234`).
 
-1. Telegram'da [@BotFather](https://t.me/BotFather)'a `/newbot` yazın, bir isim ve kullanıcı adı
-   verin (örn. `NetOpsCellDemoBot`); size bir **bot token** verecektir.
-2. Token'ı tek satır olarak şu dosyaya yazın: `secrets/telegram_bot_token.txt`
-3. Bot kullanıcı adını (başındaki `@` olmadan) `docker-compose.yml`'de veya ortamda
-   `TELEGRAM_BOT_USERNAME` olarak tanımlayın (örn. `TELEGRAM_BOT_USERNAME=NetOpsCellDemoBot
-   docker compose up -d identity-service`).
-4. `docker compose up -d --build identity-service` ile servisi yeniden başlatın.
+**E-posta OTP Kurulumu (opsiyonel):**
 
-Token tanımlanmazsa sistem **yerel geliştirme için** sabit kodlu (`1234`) bir simülasyon
-fallback'ine düşer — ama bu modda dahi kod **API yanıtında asla dönmez**, yalnızca sunucu
-logunda görünür (`docker compose logs identity-service | grep SIMULASYON`); böylece "kod
-UI'da görünmesin" kuralı her iki modda da korunur. Doğrulama (case gereği) her zaman
-zorunludur — Telegram bağlı olmadan veya doğru kod girilmeden giriş yapılamaz.
+1. `secrets/smtp_password.txt` dosyasına e-posta sağlayıcınızın SMTP şifresini (Gmail için
+   ["uygulama şifresi"](https://myaccount.google.com/apppasswords)) yazın.
+2. `docker-compose.yml`'de veya ortamda `SMTP_HOST`, `SMTP_USER`, `SMTP_FROM` değişkenlerini
+   tanımlayın (örn. `SMTP_HOST=smtp.gmail.com SMTP_USER=siz@gmail.com docker compose up -d
+   identity-service`).
+3. Boş bırakılırsa özellik zarifçe kapalı kalır, kod web'de gösterilmeye devam eder.
+
+> Gerçek bir Telegram Bot API entegrasyonu da uçtan uca çalışır durumda denendi (bkz. Faz 8
+> notları), ancak Telegram'ın "bot önce kullanıcıdan mesaj almadan mesaj gönderemez" platform
+> kısıtlaması (tüm Telegram botlarında geçerli, kaçınılmaz bir kural) demo akışına gereksiz
+> bir tek-seferlik bağlama adımı eklediği için tercih edilmedi — e-posta, ek adım
+> gerektirmeyen daha sade bir gerçek teslimat kanalıdır.
 
 ### Önceliklendirme Nasıl Yapılıyor? (case 4.3)
 
@@ -223,12 +226,12 @@ kontrolüyle korunur (yetkisiz istek → 403 + audit log).
 
 ## Proje Durumu
 
-**Faz 8 — Gerçek Telegram OTP, Gemini Kalitesi ve Bağımsızlık Doğrulaması:**
+**Faz 8 — OTP Gizliliği, Gemini Kalitesi ve Bağımsızlık Doğrulaması:**
 
-- 📱 **Gerçek OTP teslimatı (Telegram Bot API):** Müşteri artık gerçekten Telegram'a gönderilen
-  bir kodla giriş yapıyor; kod hiçbir koşulda API yanıtında veya arayüzde görünmüyor (yalnızca
-  yapılandırılmamışsa sunucu logunda, geliştirme kolaylığı için). Webhook/genel-erişilebilir
-  URL gerektirmeyen long-polling mimarisi. Bkz. "Telegram OTP Kurulumu".
+- 🔒 **OTP kodu artık hiçbir koşulda API yanıtında/arayüzde dönmüyor** — yalnızca sunucu
+  logunda görünür (bkz. "Müşteri OTP Doğrulaması"). Gerçek bir Telegram Bot API entegrasyonu
+  uçtan uca denenip çalıştırıldı, ancak Telegram'ın kaçınılmaz "önce kullanıcı botu başlatmalı"
+  kısıtlaması demoya gereksiz bir adım eklediği için bilinçli olarak sadeleştirildi.
 - 🎯 **Gemini prompt kalitesi iyileştirildi:** Model artık jenerik kurumsal cümleler yerine
   somut teknik hipotezler üretiyor (örn. "elektrik kesintisi", "soğutma sistemi arızası") ve
   uygulanabilir öneriler veriyor; canlı test edildi.
@@ -409,11 +412,6 @@ JWT RS256 anahtar çiftini ve Grafana admin şifresini üretir. Bu dizin repoya 
 > **Gemini (opsiyonel):** Müşteri şikayeti AI ön analizi için kendi Gemini anahtarınızı
 > `secrets/gemini_api_key.txt` dosyasına yazın (bkz. yukarıda "Gemini API Anahtarı Kurulumu").
 > Boş bırakılırsa sistem tam çalışır, yalnızca bu özellik kapalı kalır.
->
-> **Telegram (önerilir):** Müşteri OTP'sinin gerçekten teslim edilmesi için
-> `secrets/telegram_bot_token.txt` dosyasına bot token'ınızı yazın (bkz. "Telegram OTP
-> Kurulumu"). Boş bırakılırsa yerel geliştirme için sabit kodlu (`1234`, yalnızca sunucu
-> logunda) bir simülasyon fallback'i devreye girer.
 
 **2. Sistemi ayağa kaldır:**
 
@@ -463,7 +461,7 @@ ve haritada canlı izlenen YOLDA vakası:
 | Saha Teknisyeni (Donanım/Isınma) | saha.donanim@netopscell.com | Demo123! |
 | Saha Teknisyeni (Bağlantı/Yazılım) | saha.baglanti@netopscell.com | Demo123! |
 | Saha Teknisyeni (Güç Kesintisi) | saha.guc.kesintisi@netopscell.com | Demo123! |
-| Müşteri | 05551234567 | Telegram Bot ile OTP (yapılandırılmamışsa: sabit kod `1234`, yalnızca sunucu logunda görünür — bkz. aşağıda "Telegram OTP Kurulumu") |
+| Müşteri | 05551234567 | OTP: e-posta girilmezse/SMTP yoksa kod ekranda gösterilir (varsayılan `1234`); e-posta + SMTP varsa gerçekten gönderilir — bkz. "Müşteri OTP Doğrulaması" |
 
 ## Servis Dokümantasyonu
 

@@ -23,14 +23,14 @@ describe("AuthService.refresh — reuse detection", () => {
     const userRepo = { findOne: jest.fn() };
     const otpRepo = {};
     const auditService = { log: jest.fn().mockResolvedValue(undefined) };
-    const telegramService = { isConfigured: jest.fn().mockReturnValue(false) };
 
+    const emailService = { isConfigured: jest.fn().mockReturnValue(false) };
     const service = new AuthService(
       userRepo as never,
       refreshTokenRepo as never,
       otpRepo as never,
       auditService as never,
-      telegramService as never
+      emailService as never
     );
     return { service, refreshTokenRepo, auditService };
   }
@@ -89,55 +89,65 @@ describe("AuthService.refresh — reuse detection", () => {
 });
 
 /**
- * Regresyon testi — "doğrulanmadan girilmesin ve UI'da kod gözükmesin" gereksinimini kilitler.
- * Gerçek kanal Telegram Bot API'dir (telegram.service.ts); bot token tanımlı değilse (yerel
- * geliştirme) sabit kodlu bir simülasyon fallback'i devreye girer — ama bu modda dahi kod
- * HİÇBİR KOŞULDA register() yanıtında dönmemelidir (yalnızca sunucu logunda görünür).
+ * Regresyon testi — register()'in iki teslimat yolunu da dogru davrandigini kilitler:
+ * (1) e-posta yapilandirilmisken kod yanitta DONMEMELI (gercekten gonderildi),
+ * (2) e-posta yokken/yapilandirilmamisken kod web'de gosterilmeli (otpHint) — ama HER
+ * IKI durumda da kod otp_codes tablosuna musteri kaydiyla (userId) iliskili yazilmalidir.
  */
-describe("AuthService.register — OTP kodu asla yanitta donmemeli", () => {
-  it("Telegram yapilandirilmamisken (simulasyon) yanit sadece channel/linked icerir, kod yoktur", async () => {
-    const userRepo = { findOne: jest.fn().mockResolvedValue(null), create: jest.fn((x) => x), save: jest.fn() };
-    const refreshTokenRepo = {};
+describe("AuthService.register — OTP teslimat yollari", () => {
+  it("e-posta yapilandirilmis VE musteri e-posta girmisse: kod yanitta donmez, gercekten gonderilir", async () => {
+    const userRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((x) => ({ ...x, id: "user-1" })),
+      save: jest.fn(),
+    };
     const otpRepo = { insert: jest.fn().mockResolvedValue(undefined) };
     const auditService = { log: jest.fn() };
-    const telegramService = { isConfigured: jest.fn().mockReturnValue(false) };
-
-    const service = new AuthService(
-      userRepo as never,
-      refreshTokenRepo as never,
-      otpRepo as never,
-      auditService as never,
-      telegramService as never
-    );
-
-    const result = await service.register({ gsm: "05551234567", name: "Test", surname: "User" } as never);
-
-    expect(result).toEqual({ message: expect.any(String), channel: "SIMULATED", linked: true });
-    expect(JSON.stringify(result)).not.toMatch(/\d{4}/); // yanitta 4 haneli bir kod gecmemeli
-    expect(otpRepo.insert).toHaveBeenCalled(); // kod uretilip DB'ye yazildi (dogrulama icin), ama donmedi
-  });
-
-  it("Telegram baglanmamis kullanici icin OTP GONDERILMEZ, sadece baglanti linki doner", async () => {
-    const userRepo = { findOne: jest.fn().mockResolvedValue({ id: "u1" }), create: jest.fn(), save: jest.fn() };
-    const otpRepo = { insert: jest.fn() };
-    const telegramService = {
-      isConfigured: jest.fn().mockReturnValue(true),
-      getOrCreateLink: jest.fn().mockResolvedValue({ chatId: null, linkToken: "abc123" }),
-      buildDeepLink: jest.fn().mockReturnValue("https://t.me/NetOpsCellBot?start=abc123"),
-    };
+    const emailService = { isConfigured: jest.fn().mockReturnValue(true), sendOtp: jest.fn().mockResolvedValue(true) };
 
     const service = new AuthService(
       userRepo as never,
       {} as never,
       otpRepo as never,
-      { log: jest.fn() } as never,
-      telegramService as never
+      auditService as never,
+      emailService as never
+    );
+
+    const result = await service.register({
+      gsm: "05551234567",
+      name: "Test",
+      surname: "User",
+      email: "test@example.com",
+    } as never);
+
+    expect(result.otpHint).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/\d{4}/);
+    expect(emailService.sendOtp).toHaveBeenCalledWith("test@example.com", expect.any(String));
+    // Kod, musteri kaydiyla (userId) iliskili sekilde DB'ye yazildi
+    expect(otpRepo.insert).toHaveBeenCalledWith(expect.objectContaining({ gsm: "05551234567", userId: "user-1" }));
+  });
+
+  it("e-posta yoksa/yapilandirilmamissa: kod web'de gosterilir (otpHint), yine de DB'ye kaydedilir", async () => {
+    const userRepo = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((x) => ({ ...x, id: "user-2" })),
+      save: jest.fn(),
+    };
+    const otpRepo = { insert: jest.fn().mockResolvedValue(undefined) };
+    const auditService = { log: jest.fn() };
+    const emailService = { isConfigured: jest.fn().mockReturnValue(false) };
+
+    const service = new AuthService(
+      userRepo as never,
+      {} as never,
+      otpRepo as never,
+      auditService as never,
+      emailService as never
     );
 
     const result = await service.register({ gsm: "05551234567", name: "Test", surname: "User" } as never);
 
-    expect(result.linked).toBe(false);
-    expect(result.linkUrl).toBe("https://t.me/NetOpsCellBot?start=abc123");
-    expect(otpRepo.insert).not.toHaveBeenCalled(); // baglanti tamamlanmadan kod uretilmemeli
+    expect(result.otpHint).toEqual(expect.stringMatching(/^\d{4}$/));
+    expect(otpRepo.insert).toHaveBeenCalledWith(expect.objectContaining({ gsm: "05551234567", userId: "user-2" }));
   });
 });

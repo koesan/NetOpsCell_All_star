@@ -19,8 +19,6 @@ const PUBLIC_ROUTES = [
   { method: "POST", path: "/api/v1/auth/login" },
   { method: "POST", path: "/api/v1/auth/refresh" },
   { method: "POST", path: "/api/v1/auth/logout" },
-  // Telegram baglanti durumu: musteri henuz kimlik dogrulamadan (OTP oncesi) sorgular
-  { method: "GET", path: "/api/v1/auth/telegram/link-status" },
 ];
 
 function isPublicRoute(req) {

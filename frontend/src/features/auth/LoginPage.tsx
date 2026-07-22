@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CheckCircle2, KeyRound, Radio, Send, ShieldCheck, Smartphone, Sparkles } from "lucide-react";
+import { KeyRound, Mail, Radio, ShieldCheck, Smartphone, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../../components/ui/Button";
@@ -11,12 +11,10 @@ import { cn } from "../../lib/cn";
 import turkcellLogo from "../../assets/turkcell-logo.webp";
 
 type Mode = "staff" | "customer";
-type CustomerStep = "details" | "telegram-link" | "otp";
-
-const LINK_POLL_INTERVAL_MS = 2500;
+type CustomerStep = "details" | "otp";
 
 export function LoginPage() {
-  const { loginStaff, registerCustomer, telegramLinkStatus, verifyOtp } = useAuth();
+  const { loginStaff, registerCustomer, verifyOtp } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<Mode>("staff");
@@ -29,13 +27,11 @@ export function LoginPage() {
   const [name, setName] = useState("");
   const [surname, setSurname] = useState("");
   const [gsm, setGsm] = useState("");
+  const [custEmail, setCustEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
-  const [telegramLinkUrl, setTelegramLinkUrl] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [otpHint, setOtpHint] = useState<string | null>(null);
 
   const goToApp = () => navigate("/", { replace: true });
-
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   const handleStaffLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -50,40 +46,14 @@ export function LoginPage() {
     }
   };
 
-  // Musteri OTP akisi: kod ASLA UI'da veya API yanitinda gorunmez — gercekten Telegram'a
-  // gonderilir. Musteri Telegram baglamamissa once tek seferlik baglanti istenir; baglanti
-  // tamamlanana kadar kisa araliklarla durum sorgulanir (bkz. auth.service.ts register()).
-  const requestOtpNow = async () => {
-    const result = await registerCustomer(name, surname, gsm);
-    if (!result.linked) {
-      setTelegramLinkUrl(result.linkUrl ?? null);
-      setCustomerStep("telegram-link");
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(async () => {
-        const linked = await telegramLinkStatus(gsm).catch(() => false);
-        if (linked) {
-          if (pollRef.current) clearInterval(pollRef.current);
-          toast.success("Telegram bağlandı, doğrulama kodu gönderiliyor...");
-          try {
-            await registerCustomer(name, surname, gsm);
-            setCustomerStep("otp");
-            toast.success("Doğrulama kodu Telegram'a gönderildi.");
-          } catch (err) {
-            toast.error(extractErrorMessage(err));
-          }
-        }
-      }, LINK_POLL_INTERVAL_MS);
-      return;
-    }
-    setCustomerStep("otp");
-    toast.success(result.channel === "TELEGRAM" ? "Doğrulama kodu Telegram'a gönderildi." : "OTP kodu gönderildi.");
-  };
-
   const handleRequestOtp = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await requestOtpNow();
+      const result = await registerCustomer(name, surname, gsm, custEmail || undefined);
+      setOtpHint(result.otpHint ?? null);
+      setCustomerStep("otp");
+      toast.success(result.message);
     } catch (err) {
       toast.error(extractErrorMessage(err));
     } finally {
@@ -207,55 +177,30 @@ export function LoginPage() {
                 <Input label="Soyad" required value={surname} onChange={(e) => setSurname(e.target.value)} />
               </div>
               <Input label="GSM" required value={gsm} onChange={(e) => setGsm(e.target.value)} placeholder="05XXXXXXXXX" />
+              <Input
+                label="E-posta (opsiyonel)"
+                type="email"
+                value={custEmail}
+                onChange={(e) => setCustEmail(e.target.value)}
+                placeholder="ornek@mail.com"
+              />
+              <p className="-mt-2.5 flex items-start gap-1 text-[11px] text-navy-400">
+                <Mail className="mt-0.5 h-3 w-3 shrink-0" /> E-posta girerseniz doğrulama kodu oraya gönderilir; boş
+                bırakırsanız kod bir sonraki ekranda gösterilir.
+              </p>
               <Button type="submit" size="lg" loading={loading} className="mt-2 w-full">
-                Devam Et
+                OTP Kodu Gönder
               </Button>
             </form>
           )}
 
-          {mode === "customer" && customerStep === "telegram-link" && (
-            <div className="mt-6 flex flex-col gap-4">
-              <div className="rounded-xl border border-navy-100 bg-surface-subtle p-4 text-center">
-                <Send className="mx-auto h-8 w-8 text-navy-400" />
-                <p className="mt-2.5 text-sm font-semibold text-navy-900">Telegram hesabınızı bağlayın</p>
-                <p className="mt-1 text-xs leading-relaxed text-navy-500">
-                  Doğrulama kodunuz güvenlik amacıyla Telegram üzerinden gönderilir. Aşağıdaki
-                  düğmeye basıp Telegram'da <span className="font-medium">Başlat</span>'a
-                  dokunun; bu ekran otomatik olarak devam edecektir.
-                </p>
-                {telegramLinkUrl && (
-                  <a
-                    href={telegramLinkUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#229ED9] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                  >
-                    <Send className="h-4 w-4" /> Telegram'da Aç
-                  </a>
-                )}
-                <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-navy-400">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-navy-400" /> Bağlantı bekleniyor...
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (pollRef.current) clearInterval(pollRef.current);
-                  setCustomerStep("details");
-                }}
-                className="text-xs font-medium text-navy-400 hover:text-navy-600"
-              >
-                ← Bilgileri değiştir
-              </button>
-            </div>
-          )}
-
           {mode === "customer" && customerStep === "otp" && (
             <form onSubmit={handleVerifyOtp} className="mt-6 flex flex-col gap-4">
-              <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800 ring-1 ring-inset ring-emerald-200">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                Doğrulama kodu gönderildi. Telegram sohbetinizi kontrol edin.
-              </div>
+              {otpHint && (
+                <div className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800 ring-1 ring-inset ring-amber-200">
+                  Doğrulama kodunuz: <span className="font-mono font-semibold">{otpHint}</span>
+                </div>
+              )}
               <Input label="OTP Kodu" required value={otpCode} onChange={(e) => setOtpCode(e.target.value)} placeholder="••••" maxLength={4} />
               <Button type="submit" size="lg" loading={loading} className="mt-2 w-full">
                 Doğrula ve Giriş Yap

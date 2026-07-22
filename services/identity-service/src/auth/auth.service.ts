@@ -15,7 +15,7 @@ import { VerifyOtpDto } from "./dto/verify-otp.dto";
 import { LoginDto } from "./dto/login.dto";
 import { AuditService } from "../audit/audit.service";
 import { signAccessToken } from "./jwt.util";
-import { TelegramService } from "./telegram.service";
+import { EmailService } from "./email.service";
 
 const OTP_TTL_MINUTES = 5;
 const ACCOUNT_LOCK_MAX_ATTEMPTS = parseInt(process.env.ACCOUNT_LOCK_MAX_ATTEMPTS || "5", 10);
@@ -30,10 +30,9 @@ export interface TokenPair {
 
 export interface RegisterResult {
   message: string;
-  channel: "TELEGRAM" | "SIMULATED";
-  linked: boolean;
-  /** Yalnizca linked=false iken doldurulur: musterinin Telegram'da acmasi gereken derin baglanti. */
-  linkUrl?: string;
+  /** Yalnizca e-posta ile GERCEK teslimat basarisiz/mumkun DEGILSE doldurulur — musteri
+   * kodu baska hicbir kanaldan alamayacagi icin web'de gosterilir (bkz. register()). */
+  otpHint?: string;
 }
 
 @Injectable()
@@ -45,17 +44,27 @@ export class AuthService {
     @InjectRepository(RefreshToken) private readonly refreshTokenRepo: Repository<RefreshToken>,
     @InjectRepository(OtpCode) private readonly otpRepo: Repository<OtpCode>,
     private readonly auditService: AuditService,
-    private readonly telegramService: TelegramService
+    private readonly emailService: EmailService
   ) {}
 
   private normalizeGsm(gsm: string): string {
     return gsm.startsWith("0") ? gsm : `0${gsm}`;
   }
 
-  /** Musteri kaydi + OTP tetikleme. Gercek teslimat: Telegram Bot API (bkz. telegram.service.ts).
-   * Kod HICBIR KOSULDA yanitta veya UI'da donmez — yalnizca baglanan Telegram sohbetine gercekten
-   * gonderilir. Musteri henuz Telegram baglamamissa OTP gonderilMEZ, bunun yerine bir tek-seferlik
-   * baglanti linki (deep link) doner; frontend bunu gosterip baglanti tamamlanana kadar bekler. */
+  /** Musteri kaydi + OTP tetikleme.
+   *
+   * Teslimat sirasi:
+   * 1) Musteri e-posta girdiyse VE SMTP yapilandirilmissa: kod GERCEKTEN o adrese
+   *    gonderilir, yanitta donmez (rastgele 4 haneli kod uretilir).
+   * 2) Aksi halde (e-posta yok veya SMTP yapilandirilmamis): musterinin kodu baska
+   *    hicbir kanaldan alma imkani olmadigi icin web arayuzunde gosterilir (otpHint) —
+   *    boylece dogrulama adimi (case gereği zorunlu) engellenmez. Kod her durumda
+   *    otp_codes tablosuna, musteri kaydiyla (userId + gsm) iliskili sekilde yazilir.
+   *
+   * Not: Telegram Bot API ile gercek teslimat uctan uca denenip calisir bulundu, ancak
+   * Telegram'in tum botlarda gecerli "once kullanici /start demeli" kisitlamasi (spam
+   * korumasi, atlanamaz) gereksiz bir tek-seferlik baglama adimi ekledigi icin bilinçli
+   * olarak tercih edilmedi — e-posta, ek adim gerektirmeyen daha sade bir kanaldir. */
   async register(dto: RegisterDto): Promise<RegisterResult> {
     const gsm = this.normalizeGsm(dto.gsm);
 
@@ -74,44 +83,34 @@ export class AuthService {
         status: UserStatus.PENDING_VERIFICATION,
       });
       await this.userRepo.save(user);
+    } else if (dto.email && dto.email !== user.email) {
+      // Donen musteri yeni bir e-posta girmis olabilir (orn. ilk kayitta bos birakip
+      // sonradan e-posta ile teslimat almak istiyor) - kaydi guncelleriz.
+      user.email = dto.email;
+      await this.userRepo.save(user);
     }
 
-    if (this.telegramService.isConfigured()) {
-      const link = await this.telegramService.getOrCreateLink(gsm);
-      if (!link.chatId) {
-        return {
-          message: "Devam etmek icin Telegram hesabinizi baglayin.",
-          channel: "TELEGRAM",
-          linked: false,
-          linkUrl: this.telegramService.buildDeepLink(link.linkToken),
-        };
-      }
+    const canEmail = Boolean(user.email) && this.emailService.isConfigured();
+    const code = canEmail ? String(Math.floor(1000 + Math.random() * 9000)) : process.env.OTP_FIXED_CODE || "1234";
 
-      const code = String(Math.floor(1000 + Math.random() * 9000));
-      await this.otpRepo.insert({ gsm, code, expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000) });
-      const delivered = await this.telegramService.sendOtp(link.chatId, code);
-      if (!delivered) {
-        throw new BadRequestException("Telegram'a mesaj gonderilemedi. Lutfen daha sonra tekrar deneyin.");
+    await this.otpRepo.insert({
+      gsm,
+      userId: user.id,
+      code,
+      expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
+    });
+
+    if (canEmail) {
+      const delivered = await this.emailService.sendOtp(user.email as string, code);
+      if (delivered) {
+        return { message: `Doğrulama kodu ${user.email}'e gönderildi.` };
       }
-      return { message: "Dogrulama kodu Telegram'a gonderildi.", channel: "TELEGRAM", linked: true };
     }
 
-    // Telegram yapilandirilmamis (TELEGRAM_BOT_TOKEN yok): yerel gelistirme/test icin
-    // sabit kodlu simulasyon fallback'i. Kod BILINCLI OLARAK yanitta DONMEZ (yalnizca
-    // sunucu logunda goruntulenir) — boylece prod/demo davranisiyla (kod hicbir zaman
-    // istemciye sizmaz) UI/API sozlesmesi tutarli kalir. Bkz. README "Telegram OTP Kurulumu".
-    const code = process.env.OTP_FIXED_CODE || "1234";
-    await this.otpRepo.insert({ gsm, code, expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000) });
-    this.logger.warn(
-      `[SIMULASYON] Telegram yapilandirilmamis — OTP kodu sadece bu log satirinda goruntuleniyor: gsm=${gsm} code=${code}`
-    );
-    return { message: "OTP kodu gonderildi.", channel: "SIMULATED", linked: true };
-  }
-
-  /** Frontend'in "Telegram'i baglayin" ekraninda kisa araliklarla cagirdigi durum kontrolu. */
-  async getTelegramLinkStatus(rawGsm: string): Promise<{ linked: boolean }> {
-    const gsm = this.normalizeGsm(rawGsm);
-    return { linked: await this.telegramService.isLinked(gsm) };
+    // E-posta yok/basarisiz: musterinin kodu alabilecegi baska bir kanal olmadigindan
+    // dogrulama adiminin calismaya devam etmesi icin kod web'de gosterilir.
+    this.logger.log(`OTP uretildi ve musteri kaydiyla iliskilendirildi: userId=${user.id} gsm=${gsm} code=${code}`);
+    return { message: "OTP kodu oluşturuldu.", otpHint: code };
   }
 
   async verifyOtp(dto: VerifyOtpDto, ip: string | null): Promise<TokenPair> {

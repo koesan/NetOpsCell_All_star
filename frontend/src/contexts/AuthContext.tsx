@@ -5,9 +5,8 @@ import type { AuthUser, Role, TokenPair } from "../types";
 
 export interface RegisterOtpResult {
   message: string;
-  channel: "TELEGRAM" | "SIMULATED";
-  linked: boolean;
-  linkUrl?: string;
+  /** Yalnizca e-posta ile gercek teslimat yapilamadiginda doldurulur (bkz. auth.service.ts). */
+  otpHint?: string;
 }
 
 interface AuthContextValue {
@@ -15,7 +14,6 @@ interface AuthContextValue {
   isLoading: boolean;
   loginStaff: (email: string, password: string) => Promise<void>;
   registerCustomer: (name: string, surname: string, gsm: string, email?: string) => Promise<RegisterOtpResult>;
-  telegramLinkStatus: (gsm: string) => Promise<boolean>;
   verifyOtp: (gsm: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -74,11 +72,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return response.data.data as RegisterOtpResult;
   };
 
-  const telegramLinkStatus = async (gsm: string) => {
-    const response = await api.get("/api/v1/auth/telegram/link-status", { params: { gsm } });
-    return Boolean(response.data.data?.linked);
-  };
-
   const verifyOtp = async (gsm: string, code: string) => {
     const response = await api.post("/api/v1/auth/otp/verify", { gsm, code });
     await applyTokens(response.data.data as TokenPair);
@@ -95,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const value = useMemo(
-    () => ({ user, isLoading, loginStaff, registerCustomer, telegramLinkStatus, verifyOtp, logout }),
+    () => ({ user, isLoading, loginStaff, registerCustomer, verifyOtp, logout }),
     [user, isLoading]
   );
 

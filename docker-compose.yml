@@ -54,10 +54,9 @@ secrets:
   # Dosya bos birakilirsa ozellik zarifce kapali kalir; sistemin geri kalani etkilenmez.
   gemini_api_key:
     file: ./secrets/gemini_api_key.txt
-  # Telegram bot token — @BotFather'dan alinir, bkz. README "Telegram OTP Kurulumu".
-  # Bos birakilirsa gercek OTP teslimati devre disi kalir, yerel simulasyon fallback'i devreye girer.
-  telegram_bot_token:
-    file: ./secrets/telegram_bot_token.txt
+  # SMTP sifresi (e-posta ile OTP teslimati, opsiyonel) — bkz. README "E-posta OTP Kurulumu".
+  smtp_password:
+    file: ./secrets/smtp_password.txt
 
 x-resource-defaults: &default-resources
   deploy:
@@ -220,11 +219,14 @@ services:
       RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
       INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
       CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost:8080
-      # Gercek OTP teslimati (Telegram Bot API) — bkz. kok README "Telegram OTP Kurulumu".
-      # Bot username herkese acik bilgidir (secret degil); token secrets/telegram_bot_token.txt'de.
-      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/telegram_bot_token
-      TELEGRAM_BOT_USERNAME: "${TELEGRAM_BOT_USERNAME:-}"
-    secrets: [identity_db_password, jwt_private_key, jwt_public_key, rabbitmq_password, internal_api_key, telegram_bot_token]
+      # E-posta ile OTP teslimati (opsiyonel) — bkz. kok README "E-posta OTP Kurulumu".
+      # SMTP_HOST/SMTP_USER bos birakilirsa bu kanal devre disi kalir, kod web'de gosterilir.
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+    secrets: [identity_db_password, jwt_private_key, jwt_public_key, rabbitmq_password, internal_api_key, smtp_password]
     ports:
       - "3001:3001"
     depends_on:

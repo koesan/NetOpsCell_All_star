@@ -916,29 +916,26 @@ değerlendirilir. Ayrı bir "öncelik ML modeli" bilinçli olarak eğitilmedi �
 girdiden tanımlar, opak bir model yerine denetlenebilir bir karar matrisi (süpervizör
 override'lanabilir) tercih edildi. Detay: kök README "Önceliklendirme Nasıl Yapılıyor?".
 
-### 25.4 Gerçek OTP Teslimatı — Telegram Bot API
+### 25.4 OTP Teslimatı — İki Kademeli Strateji ve Denenen/Geri Alınan Telegram Entegrasyonu
 
-Case'in kendisi OTP için simülasyon (sabit kod) istiyor; bu proje bilinçli olarak bunun ötesine
-geçti. Mimari kararlar:
+Case OTP için simülasyon (sabit kod) kabul eder. Bu proje iki kademeli bir strateji uygular
+(`AuthService.register()`, `src/auth/email.service.ts`):
 
-- **Neden Telegram (SMS/WhatsApp Business API yerine):** SMS sağlayıcıları (Twilio vb.) ücretli
-  hesap ve telefon numarası satın alınmasını gerektirir; WhatsApp Business API Meta iş hesabı
-  onayı ister. Telegram Bot API ücretsizdir, @BotFather üzerinden dakikalar içinde kurulur.
-- **Webhook değil, long-polling:** Genel-erişilebilir bir HTTPS URL gerektirmez (Docker Compose
-  gibi kapalı bir ağda, tünel/ngrok olmadan çalışır) — yalnızca dışarıya çıkış (api.telegram.org)
-  yeterlidir. `getUpdates?offset=...&timeout=25` ile 25 saniyelik uzun-yoklama, istek sıklığını
-  azaltır.
-- **Bağlama (linking) akışı:** GSM ↔ Telegram chat_id eşlemesi `telegram_links` tablosunda
-  tutulur. Müşteri ilk girişte tek seferlik bir derin bağlantı (`t.me/<bot>?start=<token>`) alır;
-  Telegram'da botu başlattığında polling döngüsü bunu yakalayıp eşlemeyi tamamlar. Sonraki tüm
-  girişlerde kod doğrudan o sohbete gönderilir.
-- **Kod hiçbir koşulda istemciye sızmaz:** `AuthService.register()` yanıtı yalnızca
-  `{ message, channel, linked, linkUrl? }` alanlarını içerir — gerçek koddan bağımsız olarak.
-  Telegram yapılandırılmamışsa (bot token yok) sabit kodlu bir simülasyon fallback'i devreye
-  girer (yerel geliştirme kolaylığı için), ama o modda dahi kod yalnızca sunucu logunda görünür,
-  API yanıtında asla dönmez.
-- **Bağımsızlık:** Bot token tanımlı değilse `TelegramService.onModuleInit()` polling'i hiç
-  başlatmaz, servis normal şekilde ayağa kalkar (graceful degradation).
+1. Müşteri kayıt sırasında e-posta girdiyse VE SMTP yapılandırılmışsa: kod **gerçekten**
+   o adrese gönderilir (nodemailer/SMTP), rastgele üretilir, API yanıtında dönmez.
+2. Aksi halde: müşterinin kodu başka bir kanaldan alma imkânı olmadığından, doğrulama adımının
+   engellenmemesi için kod web arayüzünde gösterilir (`otpHint`).
+
+Her iki durumda da kod `otp_codes` tablosuna **müşteri kaydıyla ilişkili** (`userId` + `gsm`)
+yazılır — hangi kodun hangi müşteriye ait olduğu sunucu tarafında her zaman izlenebilir.
+
+Gerçek bir Telegram Bot API entegrasyonu (long-polling, GSM↔chat_id bağlama akışı, gerçek
+bot token ile) uçtan uca kurulup çalıştığı doğrulandı. Ancak Telegram'ın **tüm botlar için
+geçerli, kaçınılmaz platform kısıtlaması** — bir bot, kullanıcı önce ona `/start` ile mesaj
+atmadan hiçbir mesaj gönderemez (spam koruması) — demo akışına gereksiz bir tek-seferlik
+"bağlama" adımı ekliyordu. Bu adım hiçbir Telegram botunda atlanamaz; SMS'in aksine "numarayı
+gir, otomatik kod gelsin" davranışı Telegram ile mümkün değildir. E-posta, ek adım
+gerektirmeyen daha sade bir gerçek teslimat kanalı olduğu için tercih edildi.
 
 ### 25.5 Bağımsızlık Doğrulaması — Dört Servisin Tamamı
 

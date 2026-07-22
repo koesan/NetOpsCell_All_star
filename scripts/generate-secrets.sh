@@ -68,13 +68,13 @@ else
   echo "  atlaniyor (zaten var): gemini_api_key.txt"
 fi
 
-# Telegram bot token da disaridan alinir (@BotFather) — burada uretilemez.
-# Bos birakilirsa gercek OTP teslimati devre disi kalir, yerel simulasyon fallback'i calisir.
-if [ ! -f "$SECRETS_DIR/telegram_bot_token.txt" ]; then
-  : > "$SECRETS_DIR/telegram_bot_token.txt"
-  echo "  olusturuldu: telegram_bot_token.txt (BOS - kendi Telegram bot token'inizi bu dosyaya yazin)"
+# SMTP sifresi de disaridan alinir (e-posta saglayicinizdan) — burada uretilemez.
+# Bos birakilirsa e-posta ile OTP teslimati devre disi kalir, kod web'de gosterilir.
+if [ ! -f "$SECRETS_DIR/smtp_password.txt" ]; then
+  : > "$SECRETS_DIR/smtp_password.txt"
+  echo "  olusturuldu: smtp_password.txt (BOS - kendi SMTP sifrenizi bu dosyaya yazin)"
 else
-  echo "  atlaniyor (zaten var): telegram_bot_token.txt"
+  echo "  atlaniyor (zaten var): smtp_password.txt"
 fi
 
 echo "Tamamlandi. Simdi: docker compose up --build"

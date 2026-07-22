@@ -9,6 +9,12 @@ export class OtpCode {
   @Column({ type: "varchar" })
   gsm: string;
 
+  /** Kaydin hangi musteri hesabina ait oldugunu acikca isaretler (gsm zaten benzersiz
+   * tanimlayici olsa da, sorgularda/loglarda dogrudan iliski icin ayrica tutulur). */
+  @Index()
+  @Column({ type: "uuid", nullable: true })
+  userId: string | null;
+
   @Column({ type: "varchar" })
   code: string;
 

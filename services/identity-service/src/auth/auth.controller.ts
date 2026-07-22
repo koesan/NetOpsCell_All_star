@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Post, Req } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
 import { AuthService } from "./auth.service";
@@ -19,13 +19,6 @@ export class AuthController {
   @Post("register")
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
-  }
-
-  /** Frontend'in "Telegram baglantisi bekleniyor" ekraninda kisa araliklarla sordugu durum. */
-  @Public()
-  @Get("telegram/link-status")
-  telegramLinkStatus(@Query("gsm") gsm: string) {
-    return this.authService.getTelegramLinkStatus(gsm);
   }
 
   @Public()

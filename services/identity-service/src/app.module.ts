@@ -8,7 +8,6 @@ import { User } from "./entities/user.entity";
 import { RefreshToken } from "./entities/refresh-token.entity";
 import { AuditLog } from "./entities/audit-log.entity";
 import { OtpCode } from "./entities/otp-code.entity";
-import { TelegramLink } from "./entities/telegram-link.entity";
 
 import { AuthModule } from "./auth/auth.module";
 import { AdminModule } from "./admin/admin.module";
@@ -30,7 +29,7 @@ import { readSecret } from "./common/secrets";
       username: process.env.DB_USER || "identity_user",
       password: readSecret("DB_PASSWORD", "changeme"),
       database: process.env.DB_NAME || "identity",
-      entities: [User, RefreshToken, AuditLog, OtpCode, TelegramLink],
+      entities: [User, RefreshToken, AuditLog, OtpCode],
       synchronize: true, // Faz 1: hackathon hizi icin. Uretimde migration'a gecilir.
     }),
     RabbitMQModule,
