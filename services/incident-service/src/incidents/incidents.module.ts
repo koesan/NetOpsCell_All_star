@@ -10,12 +10,14 @@ import { SlaScheduler } from "./sla.scheduler";
 import { AiClientModule } from "../ai-client/ai-client.module";
 import { EventPublisherService } from "../common/events/event-publisher.service";
 import { MessagingModule } from "../messaging/messaging.module";
+import { StationsModule } from "../stations/stations.module";
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Incident, IncidentStatusHistory, IncidentResolution, TelemetryReading]),
     AiClientModule,
     MessagingModule,
+    StationsModule,
   ],
   controllers: [IncidentsController],
   providers: [IncidentsService, SlaScheduler, EventPublisherService],

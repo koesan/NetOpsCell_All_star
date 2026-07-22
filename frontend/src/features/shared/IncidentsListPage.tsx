@@ -9,6 +9,7 @@ import { FaultTypeBadge, PriorityBadge, StatusBadge } from "../../components/ui/
 import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States";
 import { OperationsMap } from "../../components/map/OperationsMap";
 import { RoutePlanPanel } from "../../components/map/RoutePlanPanel";
+import { ServiceNotice } from "../../components/ui/ServiceNotice";
 import { useIncidents, useStations, useTeams } from "./incidentHooks";
 import { SlaCountdown } from "./SlaCountdown";
 
@@ -28,12 +29,16 @@ export function IncidentsListPage({
 }) {
   const { data: incidents, isLoading, isError, refetch } = useIncidents();
   const { data: stations } = useStations();
-  const { data: teams } = useTeams(showMap && showTeamsOnMap);
+  const { data: teams, isError: teamsUnavailable } = useTeams(showMap && showTeamsOnMap);
   const navigate = useNavigate();
 
   return (
     <div>
       <PageHeader title={title} description={description} />
+
+      {showMap && showTeamsOnMap && teamsUnavailable && (
+        <ServiceNotice message="AI Service şu an erişilemiyor: ekip konumları ve otomatik atama geçici olarak devre dışı. Vakalar BELIRSIZ/ORTA olarak açılmaya devam eder ve manuel atama kuyruğuna düşer — sistemin geri kalanı tam çalışır durumda." />
+      )}
 
       {showMap && (
         <>

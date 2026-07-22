@@ -109,6 +109,61 @@ Analiz" düğmesi hata mesajı döndürür; bildirim/atama akışının hiçbir 
 çıktısı yalnızca bilgilendirme amaçlıdır — telemetri tabanlı ML sınıflandırıcısının ve atama
 kararlarının yerine geçmez (prompt-injection yüzeyi de bu izolasyonla sınırlandırılmıştır).
 
+### Önceliklendirme Nasıl Yapılıyor? (case 4.3)
+
+Öncelik ataması **AI güdümlüdür ve case 4.3'ü birebir uygular**: "AI etkilenen kullanıcı sayısı
+ve arıza olasılığına göre atar; büyük kapsama alanı + yüksek olasılık → KRITIK". ML modelinin
+ürettiği arıza olasılığı, istasyon kataloğundaki **gerçek abone kapsama verisiyle**
+(`stations.coverageUsers`, telemetriyle birlikte AI'a iletilir) şeffaf bir karar matrisinde
+birleşir (`app/ml/rules.py`, birim testli):
+
+| Olasılık | Kapsama ≥ 35K abone veya OUTAGE | Diğer |
+|---|---|---|
+| ≥ 0.85 (ACİL) | **KRITIK** | YUKSEK |
+| 0.40 – 0.85 | YUKSEK | ORTA |
+| < 0.40 | DUSUK | DUSUK |
+
+Ayrı bir "öncelik ML modeli" bilinçli olarak eğitilmedi: case önceliği bu iki girdiden
+tanımlar ve elimizde öncelik etiketli veri yoktur — opak bir model yerine denetlenebilir,
+süpervizörün her zaman override edebildiği (ve override'ın AI doğruluk metriğine yansıdığı)
+bir matris hem case'e hem mühendislik pratiğine daha uygundur. Eskalasyon riski modeli
+(Telstra, Bölüm 3. satır) bu kararın YANINDA bağımsız bir gösterge olarak sunulur.
+
+## Bonus Özellikler (case 12.1 — beşi de tam)
+
+| Bonus | Puan | Bu projede | Kanıt |
+|---|---|---|---|
+| **Kendi eğittiğiniz ML modeli** (eğitim verisi + süreç dokümante) | +8 | **3 ayrı model** kendi verimizle eğitildi; tüm eğitim verileri repoda (`data/`), süreç + gerçek metrikler dokümante | [`ML_APPROACH.md`](./services/ai-service/ML_APPROACH.md) · `models/*_metrics.json` · eğitim scriptleri `scripts/train_*.py` |
+| **Message queue ile event iletimi** | +5 | RabbitMQ topic exchange + DLQ; Incident→Gamification/AI, Identity→AI, audit toplama — tümü gerçek kuyruk (durable, kalıcılık testi yapıldı) | [`EVENTS.md`](./EVENTS.md) · RabbitMQ UI `localhost:15672` |
+| **Kategori bazlı AI doğruluk kırılımı** (süpervizör paneli) | +3 | `GET /api/v1/ai/accuracy/by-category` + Süpervizör dashboard'da tür bazlı doğruluk tablosu | Dashboard → "Kategori Bazlı AI Doğruluğu" |
+| **Gerçek zamanlı bildirimler** (WebSocket) | +2 | Gateway Socket.IO relay: `incident.assigned` (ETA'lı toast) ve `badge.earned` anlık iletilir, cache'ler tazelenir | `gateway/src/websocket.js` · `frontend/src/hooks/useRealtimeNotifications.ts` |
+| **CI/CD pipeline** | +2 | GitHub Actions: 4 Node servis build+test, frontend build, AI pytest, 7 Docker imajı derleme | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) |
+
+## Zorunlu Demo Senaryosu (case 11.3) — Adım Adım Karşılıklar
+
+| # | Case adımı | Bu projede nasıl gösterilir |
+|---|---|---|
+| 1 | `docker compose up` ile tüm sistem | `./scripts/generate-secrets.sh` + `docker compose up --build` → 16 konteyner, hepsi healthcheck'li |
+| 2 | Kritik telemetri oluştur | Müşteri girişi → "Arıza Bildir" → "Güç Kesintisi" hızlı senaryosu (veya `./scripts/seed-demo.sh` hepsini kurar) |
+| 3 | AI olasılık + tür + öncelik | Sonuç panelinde olasılık çubuğu + eskalasyon riski; vaka detayında tür/öncelik rozetleri (kapsama-farkındalıklı matris) |
+| 4 | Doğru uzmanlıkta ve yakın ekibe atama | Vaka detayı → "Neden bu ekip?" skor kırılımı (uzmanlık/mesafe/kapasite) + değerlendirilen alternatifler + haritada rota |
+| 5 | Saha teknisyeni çözer | Teknisyen girişi → YOLDA (haritada canlı araç) → MUDAHALE → çözüm notu |
+| 6 | Puan liderlik tablosuna yansır | WebSocket toast + Liderlik Tablosu / Profil (rozetler) anında güncellenir |
+| 7 | **Servis kapat, sistem çalışsın** | `docker stop netopscell-ai-service` → telemetri yine vaka açar (BELIRSIZ/ORTA, manuel kuyruk), UI'da amber "AI Service erişilemiyor" bandı çıkar, geri kalan her şey çalışır. Aynı test Gamification/Identity/Mongo için de doğrulandı (bkz. `ARCHITECTURE.md` Bölüm 21.3) |
+| 8 | Jüri güvenlik testleri | Aşağıdaki "Güvenlik" bölümü — tüm senaryolar canlı doğrulandı |
+
+## Güvenlik (case 10 — jüri saldırı senaryolarına karşı)
+
+| Saldırı | Savunma |
+|---|---|
+| SQL injection | Tüm sorgular ORM/parametrik (TypeORM, SQLAlchemy); class-validator + Pydantic girdi doğrulama |
+| Yetkisiz endpoint (müşteri → süpervizör) | Her endpoint'te sunucu tarafı rol guard'ı → 403 + audit log |
+| IDOR (başkasının kaydı) | Sahiplik kontrolü (`assertOwnership`): müşteri yalnız kendi, teknisyen yalnız atanan vakayı görür |
+| JWT manipülasyonu | RS256 + algoritma whitelist (`alg:none`/HS256 downgrade reddi) + issuer/audience doğrulama; Gateway'de ön-doğrulama |
+| Refresh token yeniden kullanımı | Token rotation + reuse detection: geçersiz kılınmış token kullanılırsa ailedeki TÜM oturumlar sonlandırılır |
+| XSS | React çıktı kaçışlama (dangerouslySetInnerHTML yok) + Helmet güvenlik başlıkları + CSP |
+| Brute-force | Gateway katmanlı rate limit (login 5/dk, OTP 5/dk, genel 100/dk) + Identity'de 5 hatada 15 dk hesap kilidi (kalan süre bilgisiyle) |
+
 ## Rol Bazlı Görünürlük (case 3.3 yetki matrisi)
 
 | Ekran | Müşteri | Saha Teknisyeni | NOC | Süpervizör | Admin |

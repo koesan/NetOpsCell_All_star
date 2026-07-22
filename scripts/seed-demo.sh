@@ -79,30 +79,42 @@ tech_email() {
 say "Telemetri #1 — KRITIK guc kesintisi @ BTS-IST-010 Kadikoy Iskele (otomatik atama beklenir)"
 telemetry "$CUST" '{"stationCode":"BTS-IST-010","latitude":40.9928,"longitude":29.0253,"signalStrength":-106,"packetLoss":48,"temperature":37,"powerStatus":"OUTAGE"}' >/dev/null
 
-say "Telemetri #2 — asiri isinma @ BTS-IST-003 Taksim Meydan (musteri sikayeti + Gemini on analizi ile)"
-DESC="Taksim'deki magazamizda internet gun icinde surekli yavasliyor, ogleden sonra tamamen kopuyor. Telefon cekiyor ama mobil veri neredeyse hic calismiyor."
-ANALYSIS=$(curl -sf -X POST "$GW/api/v1/ai/analyze-complaint" -H "Authorization: Bearer $CUST" -H 'Content-Type: application/json' \
-  -d "{\"text\":\"$DESC\"}" | python3 -c "import json,sys;print(json.dumps(json.load(sys.stdin)['data'],ensure_ascii=False))" 2>/dev/null || echo "")
-if [ -n "$ANALYSIS" ]; then
-  say "  Gemini analizi alindi: $(python3 -c "import json,sys;d=json.loads(sys.argv[1]);print(d['muhtemel_alan'],'-',d['olasi_neden'][:60])" "$ANALYSIS" 2>/dev/null || true)"
-fi
-PAYLOAD=$(python3 - "$DESC" "$ANALYSIS" << 'PYEOF'
+# Musteri sikayet metnini Gemini'ye analiz ettirip telemetriyle birlikte gonderir.
+# Gemini erisilemezse (anahtar yok / kota) sikayet metni analizsiz gider — akis bloke olmaz.
+telemetry_with_note() { # $1=sikayet metni $2=telemetri json'u (description'siz)
+  local desc="$1" base="$2" analysis payload
+  analysis=$(curl -sf -X POST "$GW/api/v1/ai/analyze-complaint" -H "Authorization: Bearer $CUST" -H 'Content-Type: application/json' \
+    -d "$(python3 -c "import json,sys;print(json.dumps({'text':sys.argv[1]},ensure_ascii=False))" "$desc")" \
+    | python3 -c "import json,sys;print(json.dumps(json.load(sys.stdin)['data'],ensure_ascii=False))" 2>/dev/null || echo "")
+  if [ -n "$analysis" ]; then
+    say "  Gemini: $(python3 -c "import json,sys;d=json.loads(sys.argv[1]);print(d['muhtemel_alan'],'-',d['olasi_neden'][:70])" "$analysis" 2>/dev/null || true)"
+  fi
+  payload=$(python3 - "$desc" "$analysis" "$base" << 'PYEOF'
 import json, sys
-body = {"stationCode":"BTS-IST-003","latitude":41.0370,"longitude":28.9850,
-        "signalStrength":-82,"packetLoss":6,"temperature":91,"powerStatus":"NORMAL",
-        "description":sys.argv[1]}
+body = json.loads(sys.argv[3])
+body["description"] = sys.argv[1]
 if sys.argv[2]:
     body["complaintAnalysis"] = json.loads(sys.argv[2])
 print(json.dumps(body, ensure_ascii=False))
 PYEOF
 )
-telemetry "$CUST" "$PAYLOAD" >/dev/null
+  telemetry "$CUST" "$payload" >/dev/null
+}
 
-say "Telemetri #3 — baglanti kaybi @ BTS-IST-014 Atasehir Finans Merkezi"
-telemetry "$CUST" '{"stationCode":"BTS-IST-014","latitude":40.9923,"longitude":29.1274,"signalStrength":-105,"packetLoss":52,"temperature":36,"powerStatus":"NORMAL"}' >/dev/null
+say "Telemetri #2 — asiri isinma @ BTS-IST-003 Taksim Meydan (musteri sikayeti + Gemini on analizi ile)"
+telemetry_with_note \
+  "Taksim'deki magazamizda internet gun icinde surekli yavasliyor, ogleden sonra tamamen kopuyor. Telefon cekiyor ama mobil veri neredeyse hic calismiyor." \
+  '{"stationCode":"BTS-IST-003","latitude":41.0370,"longitude":28.9850,"signalStrength":-82,"packetLoss":6,"temperature":91,"powerStatus":"NORMAL"}'
 
-say "Telemetri #4 — donanim arizasi @ BTS-IST-005 Bakirkoy Sahil"
-telemetry "$CUST" '{"stationCode":"BTS-IST-005","latitude":40.9744,"longitude":28.8719,"signalStrength":-97,"packetLoss":24,"temperature":74,"powerStatus":"UNSTABLE"}' >/dev/null
+say "Telemetri #3 — baglanti kaybi @ BTS-IST-014 Atasehir Finans Merkezi (sikayet + Gemini)"
+telemetry_with_note \
+  "Atasehir finans merkezindeki ofisimizde video konferanslar surekli donuyor, dosya yuklemeleri yarida kesiliyor. Sabah saatlerinde sorun yoktu, ogleden sonra basladi." \
+  '{"stationCode":"BTS-IST-014","latitude":40.9923,"longitude":29.1274,"signalStrength":-105,"packetLoss":52,"temperature":36,"powerStatus":"NORMAL"}'
+
+say "Telemetri #4 — donanim arizasi @ BTS-IST-005 Bakirkoy Sahil (sikayet + Gemini)"
+telemetry_with_note \
+  "Bakirkoy sahilde telefonum bir cubuk bile cekmiyor, arama yaparken ses robot gibi geliyor ve hat dusuyor. Komsularim da ayni sikayette." \
+  '{"stationCode":"BTS-IST-005","latitude":40.9744,"longitude":28.8719,"signalStrength":-97,"packetLoss":24,"temperature":74,"powerStatus":"UNSTABLE"}'
 
 say "Telemetri #5 — yazilim/aralikli hata @ BTS-IST-002 Maslak"
 telemetry "$CUST" '{"stationCode":"BTS-IST-002","latitude":41.1121,"longitude":29.0208,"signalStrength":-80,"packetLoss":12,"temperature":41,"powerStatus":"NORMAL"}' >/dev/null

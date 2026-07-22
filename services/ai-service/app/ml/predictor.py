@@ -64,6 +64,7 @@ class Predictor:
         packet_loss: float,
         temperature: float,
         power_status: str,
+        coverage_users: int | None = None,
     ) -> dict:
         derived = self._compute_derived_features(db, station_code, temperature, signal_strength, packet_loss)
 
@@ -94,7 +95,7 @@ class Predictor:
         fault_probability, predicted_fault_type = apply_safety_net(fault_probability, predicted_fault_type, power_status)
 
         recommendation = recommendation_for(fault_probability)
-        priority = priority_for(fault_probability, power_status)
+        priority = priority_for(fault_probability, power_status, coverage_users)
 
         return {
             "probability": fault_probability,

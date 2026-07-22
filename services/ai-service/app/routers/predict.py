@@ -27,6 +27,7 @@ def predict(payload: TelemetryIn, db: Session = Depends(get_db)):
         packet_loss=payload.packet_loss,
         temperature=payload.temperature,
         power_status=payload.power_status,
+        coverage_users=payload.coverage_users,
     )
 
     db.add(

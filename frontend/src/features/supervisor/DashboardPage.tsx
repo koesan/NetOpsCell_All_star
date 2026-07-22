@@ -4,6 +4,7 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card";
 import { StatTile } from "../../components/ui/StatTile";
 import { EmptyState, ErrorState, LoadingState } from "../../components/ui/States";
+import { ServiceNotice } from "../../components/ui/ServiceNotice";
 import { FaultTypeBadge, PriorityBadge } from "../../components/ui/Badge";
 import { OperationsMap } from "../../components/map/OperationsMap";
 import { useIncidents, useStations, useTeams } from "../shared/incidentHooks";
@@ -37,7 +38,7 @@ const FAULT_LABELS: Record<FaultType, string> = {
 
 export function DashboardPage() {
   const { data: summary, isLoading, isError, refetch } = useDashboardSummary();
-  const { data: accuracy } = useAiAccuracy();
+  const { data: accuracy, isError: aiUnavailable } = useAiAccuracy();
   const { data: categoryAccuracy } = useAiAccuracyByCategory();
   const { data: incidents } = useIncidents("dashboard-incidents");
   const { data: stations } = useStations();
@@ -61,6 +62,10 @@ export function DashboardPage() {
   return (
     <div>
       <PageHeader title="Süpervizör Dashboard" description="Şebeke sağlığı ve model doğruluğu tek ekrandan." />
+
+      {aiUnavailable && (
+        <ServiceNotice message="AI Service şu an erişilemiyor: doğruluk metrikleri, ekip katmanı ve otomatik atama geçici olarak devre dışı. Vaka yaşam döngüsü, SLA takibi ve dashboard'un geri kalanı tam çalışır durumda (bağımsızlık ilkesi)." />
+      )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatTile

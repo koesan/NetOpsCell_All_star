@@ -11,6 +11,9 @@ class TelemetryIn(BaseModel):
     packet_loss: float = Field(..., ge=0, le=100, description="%")
     temperature: float = Field(..., ge=-40, le=150, description="Celsius")
     power_status: str = Field(..., description=f"Biri: {', '.join(POWER_STATUS_VALUES)}")
+    # Case 4.3 oncelik matrisi girdisi: istasyonun kapsadigi abone sayisi
+    # (Incident Service istasyon katalogundan iletir; katalog disi istasyonlarda bos)
+    coverage_users: Optional[int] = Field(None, ge=0)
     incident_id: Optional[str] = None
 
 

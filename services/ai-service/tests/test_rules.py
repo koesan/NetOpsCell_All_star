@@ -47,3 +47,28 @@ def test_priority_orta_in_middle_band():
 
 def test_priority_dusuk_below_izle_threshold():
     assert priority_for(0.10, "NORMAL") == "DUSUK"
+
+
+# --- Case 4.3 kapsama-farkindalikli oncelik matrisi ------------------------
+
+def test_priority_big_coverage_high_probability_is_kritik():
+    """Case 4.3 birebir: 'buyuk kapsama alani + yuksek olasilik -> KRITIK'."""
+    assert priority_for(0.90, "NORMAL", coverage_users=42000) == "KRITIK"
+
+
+def test_priority_small_coverage_high_probability_is_yuksek():
+    assert priority_for(0.90, "NORMAL", coverage_users=17000) == "YUKSEK"
+
+
+def test_priority_big_coverage_medium_probability_is_yuksek():
+    assert priority_for(0.55, "NORMAL", coverage_users=42000) == "YUKSEK"
+
+
+def test_priority_small_coverage_medium_probability_is_orta():
+    assert priority_for(0.55, "NORMAL", coverage_users=17000) == "ORTA"
+
+
+def test_priority_unknown_coverage_backward_compatible():
+    """Katalog disi istasyon (kapsama bilinmiyor): eski davranis korunur."""
+    assert priority_for(0.90, "NORMAL") == "YUKSEK"
+    assert priority_for(0.90, "OUTAGE") == "KRITIK"

@@ -26,6 +26,8 @@ class Settings:
 
     threshold_izle = float(os.environ.get("THRESHOLD_IZLE", "0.40"))
     threshold_acil = float(os.environ.get("THRESHOLD_ACIL", "0.85"))
+    # Case 4.3 oncelik matrisi: bu esigin uzerindeki abone kapsamasi "buyuk kapsama" sayilir
+    coverage_kritik_threshold = int(os.environ.get("COVERAGE_KRITIK_THRESHOLD", "35000"))
 
     score_weight_uzmanlik = float(os.environ.get("SCORE_WEIGHT_UZMANLIK", "0.4"))
     score_weight_mesafe = float(os.environ.get("SCORE_WEIGHT_MESAFE", "0.3"))

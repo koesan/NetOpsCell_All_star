@@ -12,6 +12,7 @@ import { AccessTokenPayload } from "../auth/jwt.util";
 import { AiClientService } from "../ai-client/ai-client.service";
 import { EventPublisherService } from "../common/events/event-publisher.service";
 import { MessagingService } from "../messaging/messaging.service";
+import { StationsService } from "../stations/stations.service";
 import { assertValidTransition } from "./state-machine";
 import { generateIncidentNo } from "./incident-no.util";
 
@@ -39,7 +40,8 @@ export class IncidentsService {
     @InjectRepository(TelemetryReading) private readonly telemetryRepo: Repository<TelemetryReading>,
     private readonly aiClient: AiClientService,
     private readonly eventPublisher: EventPublisherService,
-    private readonly messagingService: MessagingService
+    private readonly messagingService: MessagingService,
+    private readonly stationsService: StationsService
   ) {}
 
   private slaDeadlineFor(priority: Priority): Date {
@@ -81,12 +83,17 @@ export class IncidentsService {
       })
     );
 
+    // Case 4.3 oncelik matrisi: istasyonun abone kapsamasi AI'a iletilir
+    // ("buyuk kapsama alani + yuksek olasilik -> KRITIK"). Katalog disi istasyonda bos gider.
+    const station = await this.stationsService.findByCode(dto.stationCode);
+
     const prediction = await this.aiClient.predict({
       station_code: dto.stationCode,
       signal_strength: dto.signalStrength,
       packet_loss: dto.packetLoss,
       temperature: dto.temperature,
       power_status: dto.powerStatus,
+      coverage_users: station?.coverageUsers ?? null,
     });
 
     // AI Service erisilemez: case 4.1 geregi vaka yine olusturulur (BELIRSIZ / ORTA / manuel kuyruk)

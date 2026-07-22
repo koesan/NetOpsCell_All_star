@@ -120,6 +120,7 @@ export class AiClientService implements OnModuleInit {
     packet_loss: number;
     temperature: number;
     power_status: string;
+    coverage_users?: number | null;
   }): Promise<PredictResult | null> {
     try {
       return await this.predictBreaker.fire(payload);
