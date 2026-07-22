@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
 import { tr } from "date-fns/locale";
 import { motion } from "framer-motion";
@@ -7,6 +8,7 @@ import {
   ArrowLeft,
   BrainCircuit,
   CheckCircle2,
+  Cpu,
   Gauge,
   MapPin,
   Navigation,
@@ -29,9 +31,9 @@ import { FaultTypeBadge, PriorityBadge, StatusBadge } from "../../components/ui/
 import { ErrorState, LoadingState } from "../../components/ui/States";
 import { OperationsMap } from "../../components/map/OperationsMap";
 import { IncidentChat } from "../../components/chat/IncidentChat";
-import { extractErrorMessage } from "../../lib/api";
+import { api, extractErrorMessage } from "../../lib/api";
 import { SlaCountdown } from "./SlaCountdown";
-import type { Incident, IncidentHistoryEntry } from "../../types";
+import type { Incident, IncidentHistoryEntry, LocalAiAnalysis } from "../../types";
 import { STATUS_LABELS } from "../../lib/statusLabels";
 import {
   useConfirmAssign,
@@ -386,17 +388,92 @@ export function IncidentDetailPage() {
                       <FaultTypeBadge faultType={incident.complaintAnalysis.muhtemel_alan} />
                     </div>
                     <p className="mt-1.5 text-xs leading-relaxed text-navy-700">{incident.complaintAnalysis.olasi_neden}</p>
-                    <p className="mt-1 text-xs leading-relaxed text-navy-600">
-                      <span className="font-semibold">Öneri:</span> {incident.complaintAnalysis.oneri}
-                    </p>
+                    {role === "MUSTERI" ? (
+                      // Musteriye teknik ekip talimati degil, sadece guven verici bir ozet gosterilir —
+                      // "oneri" alani (saha/NOC'a yonelik somut aksiyon) sadece cozen ekip rollerine gorunur.
+                      <p className="mt-1 text-xs leading-relaxed text-navy-600">
+                        Ekibimiz bu ön analizi kullanarak sorununuzu en kısa sürede çözecek.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs leading-relaxed text-navy-600">
+                        <span className="font-semibold">Öneri:</span> {incident.complaintAnalysis.oneri}
+                      </p>
+                    )}
                   </div>
                 )}
               </CardBody>
             </Card>
           )}
+
+          {canMessage && <LocalAiPanel incident={incident} />}
         </div>
       </div>
     </div>
+  );
+}
+
+/** Yerel/self-hosted AI ile ikinci gorus (Gemini'nin YERINE GECMEZ, opsiyonel bir
+ * profile ile calisan servistir - kapaliysa 503 doner ve butonun altinda gosterilir).
+ * Sadece cozen ekip rolleri gorur (musteriye gosterilmez). */
+function LocalAiPanel({ incident }: { incident: Incident }) {
+  const [result, setResult] = useState<LocalAiAnalysis | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const text = [
+        `İstasyon: ${incident.stationCode}`,
+        `Sistemin sınıflandırdığı arıza türü: ${incident.faultType}`,
+        incident.customerNote ? `Müşteri bildirimi: ${incident.customerNote}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const response = await api.post("/api/v1/local-ai/diagnose", { text });
+      return response.data.data as LocalAiAnalysis;
+    },
+    onSuccess: (data) => setResult(data),
+    onError: (err) => toast.error(extractErrorMessage(err)),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Yerel AI (Deneysel)</CardTitle>
+        <Cpu className="h-4 w-4 text-navy-300" />
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <p className="text-xs leading-relaxed text-navy-500">
+          Gemini'den bağımsız, tamamen bu sunucuda çalışan açık kaynaklı bir modelle
+          (Qwen2.5-1.5B-Instruct) ikinci bir görüş alın. Opsiyonel bir servistir;
+          etkin değilse aşağıdaki istek başarısız olur.
+        </p>
+        <Button variant="secondary" size="sm" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+          Yerel AI ile Analiz Et
+        </Button>
+        {result && (
+          <div className="space-y-1.5 rounded-xl border border-navy-200 bg-surface-subtle p-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-navy-900">{result.ariza_turu ?? "Belirsiz"}</p>
+              {result.oncelik && (
+                <span className="rounded-full bg-navy-50 px-2 py-0.5 text-[10px] font-semibold text-navy-500">
+                  {result.oncelik}
+                </span>
+              )}
+            </div>
+            {result.kok_neden && <p className="text-xs leading-relaxed text-navy-700">{result.kok_neden}</p>}
+            {result.önerilen_aksiyonlar && result.önerilen_aksiyonlar.length > 0 && (
+              <ul className="list-disc space-y-0.5 pl-4 text-xs leading-relaxed text-navy-600">
+                {result.önerilen_aksiyonlar.map((action, i) => (
+                  <li key={i}>{action}</li>
+                ))}
+              </ul>
+            )}
+            <p className="text-[10px] text-navy-400">
+              Yerel model: {result.model} {result.adapter_loaded ? "(ince ayarlı adaptör)" : "(temel model + few-shot)"}
+            </p>
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 

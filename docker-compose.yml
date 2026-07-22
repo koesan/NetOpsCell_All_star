@@ -344,6 +344,37 @@ services:
     networks: [ai-data-net, services-net]
     <<: *default-resources
 
+  # Yerel/self-hosted AI (Gemini'ye ek, opsiyonel) — bkz. docs/telecom_llm/README_LLM.md
+  # ve kok README "Yerel AI". Varsayilan `docker compose up` ile BASLAMAZ (buyuk model
+  # agirliklari + torch/transformers bagimliligi nedeniyle profile ile korunur):
+  #   docker compose --profile local-ai up -d local-ai-service
+  local-ai-service:
+    profiles: ["local-ai"]
+    build: ./services/local-ai-service
+    container_name: netopscell-local-ai-service
+    environment:
+      LOCAL_AI_MODEL_DIR: /models/Qwen2.5-1.5B-Instruct
+      LOCAL_AI_ADAPTER_DIR: /models/telecom_qwen_lora_adapter
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+    volumes:
+      - ./docs/telecom_llm/models:/models:ro
+    ports:
+      - "8010:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [services-net]
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 6G
+        reservations:
+          memory: 1G
+
   gamification-service:
     build: ./services/gamification-service
     container_name: netopscell-gamification-service
@@ -396,6 +427,7 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service:3001
       INCIDENT_SERVICE_URL: http://incident-service:3002
       AI_SERVICE_URL: http://ai-service:8000
+      LOCAL_AI_SERVICE_URL: http://local-ai-service:8000
       GAMIFICATION_SERVICE_URL: http://gamification-service:3003
       CORS_ALLOWED_ORIGINS: http://localhost:3000
       RABBITMQ_HOST: rabbitmq

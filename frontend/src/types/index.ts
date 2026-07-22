@@ -70,6 +70,19 @@ export interface ComplaintAnalysis {
   model?: string;
 }
 
+// Yerel/self-hosted AI (Gemini'nin YERINE GECMEZ - opsiyonel ikinci gorus,
+// bkz. services/local-ai-service). Servis calismiyorsa cagiran taraf 503 alir.
+export interface LocalAiAnalysis {
+  ariza_turu: string | null;
+  oncelik: string | null;
+  kok_neden: string | null;
+  önerilen_aksiyonlar: string[] | null;
+  gerekli_uzmanlik: string | null;
+  raw_response?: string | null;
+  model: string;
+  adapter_loaded: boolean;
+}
+
 export interface EscalationRisk {
   risk: "DUSUK" | "ORTA" | "YUKSEK";
   probabilities: Record<string, number>;

@@ -14,6 +14,7 @@ const PORT = process.env.PORT || 8080;
 const IDENTITY_SERVICE_URL = process.env.IDENTITY_SERVICE_URL || "http://identity-service:3001";
 const INCIDENT_SERVICE_URL = process.env.INCIDENT_SERVICE_URL || "http://incident-service:3002";
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://ai-service:8000";
+const LOCAL_AI_SERVICE_URL = process.env.LOCAL_AI_SERVICE_URL || "http://local-ai-service:8000";
 const GAMIFICATION_SERVICE_URL = process.env.GAMIFICATION_SERVICE_URL || "http://gamification-service:3003";
 
 // Faz 3: CORS artik acik (*) degil - sadece bilinen frontend origin'lerine izin verilir.
@@ -103,11 +104,11 @@ app.use(jwtAuthMiddleware);
 // http-proxy-middleware v3, onError/onProxyReq gibi ust-seviye v1/v2 secenklerini kaldirdi;
 // bunlar v3'te sessizce yok sayilir ve kutuphanenin kendi varsayilan (JSON olmayan duz metin)
 // hata gövdesi donmeye devam eder. Dogru kanca noktasi `on: { error, proxyReq }` nesnesidir.
-const proxyOptions = (target, prefix) => ({
+const proxyOptions = (target, prefix, timeoutMs = 5000) => ({
   target,
   changeOrigin: true,
-  proxyTimeout: 5000,
-  timeout: 5000,
+  proxyTimeout: timeoutMs,
+  timeout: timeoutMs,
   pathRewrite: (path) => (path === "/" ? prefix : `${prefix}${path}`),
   on: {
     proxyReq: (proxyReq, req) => {
@@ -132,6 +133,9 @@ app.use("/api/v1/stations", createProxyMiddleware(proxyOptions(INCIDENT_SERVICE_
 app.use("/api/v1/dashboard", createProxyMiddleware(proxyOptions(INCIDENT_SERVICE_URL, "/api/v1/dashboard")));
 app.use("/api/v1/ai", createProxyMiddleware(proxyOptions(AI_SERVICE_URL, "/api/v1/ai")));
 app.use("/api/v1/game", createProxyMiddleware(proxyOptions(GAMIFICATION_SERVICE_URL, "/api/v1/game")));
+// Yerel LLM cikarimi CPU'da uzun surebilir (ilk yuklemede birkaç dakika, ureti minde
+// onlarca saniye) - varsayilan 5sn proxy zaman asimi burada yetersiz kalir.
+app.use("/api/v1/local-ai", createProxyMiddleware(proxyOptions(LOCAL_AI_SERVICE_URL, "/api/v1/local-ai", 120000)));
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, data: null, error: { code: "NOT_FOUND", message: "Route bulunamadi." } });
