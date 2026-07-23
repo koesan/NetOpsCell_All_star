@@ -1,8 +1,8 @@
 """Faz 3 - Secret yonetimi (Node servislerindeki secrets.ts'in Python karsiligi).
 
 Docker Compose native `secrets:` mekanizmasi ile mount edilen dosyalari
-(`${ENV_VAR}_FILE` -> /run/secrets/<isim>) okur; bulunamazsa duz ortam
-degiskenine (yerel gelistirme kolayligi icin), o da yoksa fallback'e duser.
+(`${ENV_VAR}_FILE` -> /run/secrets/<isim>) okur; bulunamazsa secrets/ dizinine
+veya duz ortam degiskenine bakar.
 """
 
 import os
@@ -18,6 +18,20 @@ def read_secret(env_var_base: str, fallback: str = None) -> str:
     direct = os.environ.get(env_var_base)
     if direct:
         return direct
+
+    # Yerel gelistirme icin secrets/<isim>.txt kontrolu
+    candidate_paths = [
+        os.path.join(os.getcwd(), "secrets", f"{env_var_base.lower()}.txt"),
+        os.path.join(os.getcwd(), "..", "..", "secrets", f"{env_var_base.lower()}.txt"),
+        os.path.join(os.getcwd(), "..", "secrets", f"{env_var_base.lower()}.txt"),
+    ]
+    for p in candidate_paths:
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                val = f.read().strip()
+                if val:
+                    return val
+
     if fallback is not None:
         return fallback
     raise RuntimeError(f"Secret bulunamadi: {env_var_base}_FILE veya {env_var_base} ortam degiskeni tanimlanmali.")

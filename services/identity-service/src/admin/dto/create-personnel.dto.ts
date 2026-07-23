@@ -1,16 +1,16 @@
-import { ArrayNotEmpty, IsArray, IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsEmail, IsEnum, IsNumber, IsOptional, IsString, Matches, MinLength } from "class-validator";
 import { Role } from "../../common/enums/role.enum";
 
 export class CreatePersonnelDto {
   @IsString()
-  @MinLength(2)
+  @MinLength(2, { message: "Ad en az 2 karakter olmalıdır." })
   name: string;
 
   @IsString()
-  @MinLength(2)
+  @MinLength(2, { message: "Soyad en az 2 karakter olmalıdır." })
   surname: string;
 
-  @IsEmail({}, { message: "Gecerli bir e-posta adresi giriniz." })
+  @IsEmail({}, { message: "Geçerli bir e-posta adresi giriniz." })
   email: string;
 
   @IsString()
@@ -20,22 +20,22 @@ export class CreatePersonnelDto {
   @Matches(/[^A-Za-z0-9]/, { message: "Şifre en az 1 özel karakter içermelidir." })
   password: string;
 
-  @IsEnum(Role, { message: "Gecerli bir personel rolu seciniz." })
+  @IsEnum(Role, { message: "Geçerli bir personel rolü seçiniz." })
   role: Role;
 
   @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   expertise?: string[];
 
   @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   region?: string[];
 
   @IsOptional()
+  @IsNumber()
   latitude?: number;
 
   @IsOptional()
+  @IsNumber()
   longitude?: number;
 }

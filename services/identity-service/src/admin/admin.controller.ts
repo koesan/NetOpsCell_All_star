@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { AdminService } from "./admin.service";
 import { CreatePersonnelDto } from "./dto/create-personnel.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
+import { UpdatePersonnelDto } from "./dto/update-personnel.dto";
 import { Roles } from "../common/decorators/roles.decorator";
 import { Role } from "../common/enums/role.enum";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
@@ -29,6 +30,18 @@ export class AdminController {
   @Patch("personnel/:id/role")
   updateRole(@Param("id") id: string, @Body() dto: UpdateRoleDto, @CurrentUser() user: AccessTokenPayload) {
     return this.adminService.updateRole(id, dto, user.sub);
+  }
+
+  @Roles(Role.ADMIN)
+  @Patch("personnel/:id")
+  updatePersonnel(@Param("id") id: string, @Body() dto: UpdatePersonnelDto, @CurrentUser() user: AccessTokenPayload) {
+    return this.adminService.updatePersonnel(id, dto, user.sub);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete("personnel/:id")
+  deletePersonnel(@Param("id") id: string, @CurrentUser() user: AccessTokenPayload) {
+    return this.adminService.deletePersonnel(id, user.sub);
   }
 
   @Roles(Role.ADMIN)

@@ -1,12 +1,12 @@
-"""Musteri sikayet metni on analizi endpoint'i (Gemini LLM).
+"""Musteri/saha sikayet metni on analizi endpoint'i (Gemini LLM).
 
-Musteri, ariza bildirimi formunda serbest metin sikayetini yazip "AI On Analiz"
-ister; yanit aninda formun yaninda gosterilir ve bildirimle birlikte saklanmak
-uzere Incident Service'e iletilir. Anahtar tanimli degilse 503 doner — frontend
-bu durumu zarifce gizler.
+Musteri veya saha personeli, ariza bildirimi formunda serbest metin sikayetini yazip
+"AI On Analiz" ister; yanit aninda formun yaninda ve vaka detaylarinda gosterilir.
+Kota doldugunda veya API anahtari yapilandirilmadiginda kullaniciyi bilgilendiren
+acik bir fallback yaniti doner (UI'da kutu her zaman gorunur).
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.llm.gemini import analyze_complaint, is_configured
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/ai", tags=["complaint"])
 
 
 class ComplaintRequest(BaseModel):
-    text: str = Field(..., min_length=10, max_length=2000, description="Musteri sikayet metni")
+    text: str = Field(..., min_length=10, max_length=2000, description="Musteri veya saha personeli sikayet metni")
     station_code: str | None = None
     telemetry_summary: str | None = Field(None, max_length=500)
 
@@ -32,11 +32,22 @@ class ComplaintAnalysis(BaseModel):
 @router.post("/analyze-complaint", response_model=ComplaintAnalysis)
 def analyze(payload: ComplaintRequest):
     if not is_configured():
-        raise HTTPException(
-            status_code=503,
-            detail="LLM analizi yapilandirilmamis (GEMINI_API_KEY secret'i tanimli degil, bkz. README).",
+        return ComplaintAnalysis(
+            muhtemel_alan="BELIRSIZ",
+            olasi_neden="Gemini API anahtarı henüz eklenmedi. (secrets/gemini_api_key.txt bekleniyor).",
+            oneri="Sistem telemetri tabanlı ML sınıflandırma ve otomatik atama ile kesintisiz çalışmaktadır.",
+            guven=0.0,
+            model="gemini-unconfigured",
         )
+
     result = analyze_complaint(payload.text, payload.telemetry_summary)
     if result is None:
-        raise HTTPException(status_code=503, detail="LLM analizi su an kullanilamiyor, lutfen tekrar deneyin.")
+        return ComplaintAnalysis(
+            muhtemel_alan="BELIRSIZ",
+            olasi_neden="Gemini AI servisi kota sınırında veya geçici olarak yanıt veremiyor (Kota yetmiyor / API sınırı).",
+            oneri="Telemetri analizi ve ML sınıflandırıcı aktif durumdadır.",
+            guven=0.0,
+            model="gemini-quota-exceeded",
+        )
+
     return ComplaintAnalysis(**result)

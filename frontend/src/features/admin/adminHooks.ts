@@ -35,6 +35,20 @@ export interface CreatePersonnelInput {
   longitude?: number;
 }
 
+export interface UpdatePersonnelInput {
+  id: string;
+  name?: string;
+  surname?: string;
+  email?: string;
+  password?: string;
+  role?: Role;
+  expertise?: string[];
+  region?: string[];
+  status?: "ACTIVE" | "INACTIVE" | "LOCKED";
+  latitude?: number;
+  longitude?: number;
+}
+
 export function useCreatePersonnel() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -42,6 +56,37 @@ export function useCreatePersonnel() {
       const response = await api.post<{ data: Personnel }>("/api/v1/admin/personnel", input);
       return response.data.data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["personnel"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["personnel"] });
+      queryClient.invalidateQueries({ queryKey: ["ai-teams"] });
+    },
+  });
+}
+
+export function useUpdatePersonnel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...input }: UpdatePersonnelInput) => {
+      const response = await api.patch<{ data: Personnel }>(`/api/v1/admin/personnel/${id}`, input);
+      return response.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["personnel"] });
+      queryClient.invalidateQueries({ queryKey: ["ai-teams"] });
+    },
+  });
+}
+
+export function useDeletePersonnel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await api.delete<{ data: { deleted: boolean; id: string } }>(`/api/v1/admin/personnel/${id}`);
+      return response.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["personnel"] });
+      queryClient.invalidateQueries({ queryKey: ["ai-teams"] });
+    },
   });
 }

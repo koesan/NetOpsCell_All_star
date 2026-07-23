@@ -36,9 +36,13 @@ export function NocManualTelemetryModal({ isOpen, onClose, onSuccess }: NocManua
     setIsSubmitting(true);
     try {
       let complaintAnalysis = undefined;
-      if (description.trim().length > 5) {
+      if (description.trim().length >= 10) {
         try {
-          const res = await api.post("/api/v1/ai/analyze-complaint", { text: description });
+          const res = await api.post("/api/v1/ai/analyze-complaint", {
+            text: description,
+            station_code: stationCode || undefined,
+            telemetry_summary: `sinyal ${signalStrength} dBm, paket kaybı %${packetLoss}, sıcaklık ${temperature}°C, güç ${powerStatus}`,
+          });
           if (res.data?.data) {
             complaintAnalysis = res.data.data;
           }
