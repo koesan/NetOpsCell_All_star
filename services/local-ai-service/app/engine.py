@@ -58,92 +58,11 @@ FEW_SHOT_EXAMPLES = [
             {
                 "ariza_turu": "ISINMA",
                 "oncelik": "YUKSEK",
-                "kok_neden": "Kabin iklimlendirme/fan ünitesi arızası sebebiyle 86.5°C kritik sıcaklık aşımı ve termal throttling.",
+                "kok_neden": "Kabin iklimlendirme/fan ünitesi arızası sebebiyle 86.5°C sıcaklık ve termal alarm.",
                 "önerilen_aksiyonlar": [
-                    "Saha iklimlendirme ekibi yedek fan ünitesi ile sevk edilmeli.",
-                    "Kabin havalandırma filtreleri temizlenmeli.",
+                    "Saha iklimlendirme ekibi yedek fan ünitesi ile sevk edilmeli."
                 ],
                 "gerekli_uzmanlik": "DONANIM_IKLIMLENDIRME",
-            },
-            ensure_ascii=False,
-        ),
-    },
-    {
-        "role": "user",
-        "content": "Site ID: BTS-IZM-02\nPower Status: OUTAGE\nVoltage: 0V AC\nBattery Backup: 5% (Critical)\nSignal: -108 dBm\nPacket Loss: 55.0%",
-    },
-    {
-        "role": "assistant",
-        "content": json.dumps(
-            {
-                "ariza_turu": "GUC_KESINTISI",
-                "oncelik": "KRITIK",
-                "kok_neden": "Şebeke elektriği (AC Power) kesintisi ve akü grubunun kritik seviyeye (5%) düşmesi.",
-                "önerilen_aksiyonlar": [
-                    "Mobil Jeneratör (PMG) ekibi sahaya sevk edilmeli.",
-                    "Doğrultucu (Rectifier) ve ATS panosu kontrol edilmeli.",
-                ],
-                "gerekli_uzmanlik": "ENERJI_GUC",
-            },
-            ensure_ascii=False,
-        ),
-    },
-    {
-        "role": "user",
-        "content": "İstasyon: IST-ANT-015\nSıcaklık: 35.0 °C\nSinyal Gücü: -101 dBm\nPaket Kaybı: %48.2\nAlarm: Optical Loss of Signal (LOS) Port 2\nGüç: NORMAL",
-    },
-    {
-        "role": "assistant",
-        "content": json.dumps(
-            {
-                "ariza_turu": "BAGLANTI",
-                "oncelik": "YUKSEK",
-                "kok_neden": "Port 2 fiber optik hatta Loss of Signal (LOS) kopukluğu ve yüksek sönümlenme.",
-                "önerilen_aksiyonlar": [
-                    "Transmisyon ekibi OTDR ölçümü ile fiber hat kopukluk noktasını tespit etmeli.",
-                    "SFP modülü ve patch cord kablosu değiştirilmeli.",
-                ],
-                "gerekli_uzmanlik": "TRANSMISYON_FIBER",
-            },
-            ensure_ascii=False,
-        ),
-    },
-    {
-        "role": "user",
-        "content": "İstasyon: IST-DIY-007\nSıcaklık: 74.0 °C\nSinyal Gücü: -98 dBm\nPaket Kaybı: %25.0\nGüç: UNSTABLE\nŞikayet: Sektör 2 kapsama alanı 4G düştü, VSWR yüksek uyarısı veriyor.",
-    },
-    {
-        "role": "assistant",
-        "content": json.dumps(
-            {
-                "ariza_turu": "DONANIM",
-                "oncelik": "KRITIK",
-                "kok_neden": "Sektör 2 Uzak Radyo Ünitesi (RRU) dahili güç katı ve VSWR empedans uyumsuzluğu arızası.",
-                "önerilen_aksiyonlar": [
-                    "Saha ekibi Sektör 2 yedek RRU kartı ile sahaya sevk edilmeli.",
-                    "Kule içi jumper kablo ve konnektör izolasyonu kontrol edilmeli.",
-                ],
-                "gerekli_uzmanlik": "KULE_DONANIM_RF",
-            },
-            ensure_ascii=False,
-        ),
-    },
-    {
-        "role": "user",
-        "content": "İstasyon: IST-IST-220\nSıcaklık: 37.5 °C\nSinyal Gücü: -72 dBm\nPaket Kaybı: %5.0\nGüç: NORMAL\nŞikayet: Sinyal seviyesi yüksek fakat 4G el sıkışma tamamlanamıyor, paketler drop oluyor.",
-    },
-    {
-        "role": "assistant",
-        "content": json.dumps(
-            {
-                "ariza_turu": "YAZILIM",
-                "oncelik": "ORTA",
-                "kok_neden": "BBU işlemci üzerinde LTE protocol stack kilitlenmesi veya hücre konfigürasyon parametre çakışması.",
-                "önerilen_aksiyonlar": [
-                    "NOC üzerinden BBU kartına uzaktan soft-reset atılmalı.",
-                    "Yazılım versiyon kontrolü ve config rollback uygulanmalı.",
-                ],
-                "gerekli_uzmanlik": "NOC_YAZILIM_RF",
             },
             ensure_ascii=False,
         ),
@@ -177,6 +96,10 @@ class TelecomFaultLLMEngine:
             self._model_source = source
 
             try:
+                cpu_threads = min(8, os.cpu_count() or 4)
+                torch.set_num_threads(cpu_threads)
+                logger.info("PyTorch CPU thread sayisi: %d", cpu_threads)
+
                 tokenizer = AutoTokenizer.from_pretrained(
                     source, trust_remote_code=True, local_files_only=True
                 )
@@ -198,8 +121,10 @@ class TelecomFaultLLMEngine:
                         from peft import PeftModel
 
                         model = PeftModel.from_pretrained(model, ADAPTER_DIR, local_files_only=True)
+                        if hasattr(model, "merge_and_unload"):
+                            model = model.merge_and_unload()
                         self._adapter_loaded = True
-                        logger.info("Ince ayarli LoRA adaptoru yuklendi: %s", ADAPTER_DIR)
+                        logger.info("Ince ayarli LoRA adaptoru yuklendi ve birlestirildi: %s", ADAPTER_DIR)
                     except Exception as exc:  # noqa: BLE001 - adaptor yuklenemezse taban model + few-shot ile devam
                         logger.warning("LoRA adaptoru yuklenemedi (%s), taban model few-shot ile devam ediliyor.", exc)
 
@@ -241,10 +166,9 @@ class TelecomFaultLLMEngine:
         with torch.no_grad():
             generated_ids = self._model.generate(
                 **model_inputs,
-                max_new_tokens=400,
-                temperature=0.1,
-                top_p=0.9,
-                do_sample=True,
+                max_new_tokens=150,
+                do_sample=False,
+                pad_token_id=self._tokenizer.pad_token_id,
             )
 
         generated_ids = [

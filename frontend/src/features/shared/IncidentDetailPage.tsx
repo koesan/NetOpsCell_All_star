@@ -404,6 +404,38 @@ export function IncidentDetailPage() {
             </Card>
           )}
 
+          {canMessage && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Gemini AI Ön Analizi</CardTitle>
+                <Sparkles className="h-4 w-4 text-navy-300" />
+              </CardHeader>
+              <CardBody className="space-y-3">
+                {incident.complaintAnalysis ? (
+                  <div className="rounded-xl border border-brand-yellow/50 bg-brand-yellow/10 p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-navy-900">Ön Analiz</p>
+                      <FaultTypeBadge faultType={incident.complaintAnalysis.muhtemel_alan} />
+                    </div>
+                    <p className="mt-1.5 text-xs leading-relaxed text-navy-700">{incident.complaintAnalysis.olasi_neden}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-navy-600">
+                      <span className="font-semibold">Öneri:</span> {incident.complaintAnalysis.oneri}
+                    </p>
+                    <span className="mt-1.5 inline-block text-[10px] font-medium text-navy-500">
+                      güven %{Math.round(incident.complaintAnalysis.guven * 100)}
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-xs leading-relaxed text-navy-400">
+                    Bu vaka için Gemini ön analizi mevcut değil. Anahtar tanımlı değilse veya sorgu başarısız
+                    olduysa özellik devre dışı kalır; API anahtarı yapılandırıldığında yeni bildirimlerde
+                    otomatik olarak görünür.
+                  </p>
+                )}
+              </CardBody>
+            </Card>
+          )}
+
           {canMessage && <LocalAiPanel incident={incident} />}
         </div>
       </div>
