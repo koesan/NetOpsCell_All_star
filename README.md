@@ -91,7 +91,7 @@ Sistem ayağa kalktıktan sonra aşağıdaki adreslerden erişilebilir:
 | **Saha Teknisyeni 2** | `saha.baglanti@netopscell.com` | Bağlantı/Yazılım uzmanı. |
 | **Saha Teknisyeni 3** | `saha.guc.kesintisi@netopscell.com` | Güç Kesintisi uzmanı. |
 | **Admin** | `admin@netopscell.com` | Personel yönetimi ve sistem güvenlik audit loglarını inceler. |
-| **Müşteri** | `05551234567` | GSM + OTP ile giriş yapar, arıza bildirir, Gemini AI ön analizi alır. *(OTPvarsayılan: `1234`)* |
+| **Müşteri** | `05551234567` | GSM + OTP ile giriş yapar, arıza bildirir, Gemini AI ön analizi alır. *(OTP varsayılan: `1234`)* |
 
 ---
 
@@ -172,7 +172,7 @@ NetOpsCell AI katmanı, tek bir model yerine **3 bağımsız ML modeli + 1 LLM e
 3. **Eskalasyon Riski Tahmini (RandomForest - Gerçek Veri Seti)**:
    - **Kaggle Telstra Network Disruptions** (7.381 gerçek telekom arıza örneği) verisiyle doğrudan eğitilmiştir. İstasyonun geçmiş arıza profiline göre arızanın büyüme riskini sınıflandırır.
 
-4. **Şikayet Ön Analizi (Google Gemini 2.5 Flash-Lite LLM)**:
+4. **Şikayet Ön Analizi (Google Gemini 2.5 Flash LLM)**:
    - Müşterinin serbest metin olarak girdiği arıza şikayetini analiz eder. Şema zorlamalı JSON çıktısı ile muhtemel arıza alanını, olası nedeni ve kullanıcıya yapması gereken öneriyi anında sunar.
 
 5. **Akıllı Saha Ekibi Ataması (Optimizasyon Algoritması)**:

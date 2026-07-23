@@ -1,4 +1,4 @@
-import { ArrayNotEmpty, IsArray, IsEmail, IsEnum, IsIsIn, IsNumber, IsOptional, IsString, Matches, MinLength } from "class-validator";
+import { ArrayNotEmpty, IsArray, IsEmail, IsEnum, IsNumber, IsOptional, IsString, Matches, MinLength } from "class-validator";
 import { Role } from "../../common/enums/role.enum";
 import { UserStatus } from "../../common/enums/user-status.enum";
 
