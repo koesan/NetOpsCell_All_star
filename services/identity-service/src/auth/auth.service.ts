@@ -231,8 +231,12 @@ export class AuthService {
       // KRITIK: criteria objesinde duz `revokedAt: null` TypeORM'un update() metodunda IS NULL'a
       // guvenilir sekilde donusmuyor (canli guvenlik testinde yakalandi: rotasyondaki kardes token
       // iptal edilmeden calismaya devam ediyordu). IsNull() operatoru dogru SQL'i garanti eder.
+      // Kriter familyId DEGIL userId bazlidir: her yeni login/OTP dogrulamasi ayri bir familyId
+      // uretir (bkz. issueTokenPair), yani kullanicinin farkli cihazlardaki oturumlari farkli
+      // ailelerdedir. Case'in "o kullanicinin TUM oturumlari sonlandirilir" gereksinimi, iptalin
+      // cihaz/aile ayrimi yapmadan kullanici bazinda calismasini gerektirir.
       await this.refreshTokenRepo.update(
-        { familyId: tokenRow.familyId, revokedAt: IsNull() },
+        { userId: tokenRow.userId, revokedAt: IsNull() },
         { revokedAt: new Date() }
       );
       await this.auditService.log({

@@ -72,6 +72,7 @@ def health():
             "status": "ok",
             "model_ready": engine.ready,
             "model_source": engine.model_source,
+            "load_error": engine.load_error,
         },
         "error": None,
     }
@@ -80,9 +81,13 @@ def health():
 @app.post("/api/v1/local-ai/diagnose", response_model=DiagnoseResponse)
 def diagnose(payload: DiagnoseRequest):
     if not engine.ready:
+        detail = (
+            engine.load_error
+            or "Yerel model henuz yukleniyor, birazdan tekrar deneyin (ilk baslatmada birkaç dakika surebilir)."
+        )
         raise HTTPException(
             status_code=503,
-            detail="Yerel model henuz yukleniyor, birazdan tekrar deneyin (ilk baslatmada birkaç dakika surebilir).",
+            detail=detail,
         )
     result = engine.diagnose(payload.text)
     result["model"] = engine.model_source or "Qwen2.5-1.5B-Instruct"

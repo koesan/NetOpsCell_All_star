@@ -369,10 +369,15 @@ export function IncidentDetailPage() {
 
           <TimelineCard incident={incident} history={history ?? []} />
 
-          {(incident.customerNote || incident.complaintAnalysis) && (
+          {/* NOC/teknisyen/supervizor bu analizi zaten mesaj thread'inde otomatik bir
+              "AI_ANALYSIS" balonu olarak goruyor (bkz. IncidentChat.tsx) — burada tekrar
+              gostermek hem gereksiz tekrar hem de "Musteri Bildirimi" basligiyla kafa
+              karistirici. Musteri thread'i goremedigi icin kendi bildirimini/analizi
+              gorebilecegi TEK yer burasidir. */}
+          {role === "MUSTERI" && (incident.customerNote || incident.complaintAnalysis) && (
             <Card>
               <CardHeader>
-                <CardTitle>Müşteri Bildirimi &amp; AI Ön Analizi</CardTitle>
+                <CardTitle>Bildiriminiz &amp; AI Ön Analizi</CardTitle>
                 <Sparkles className="h-4 w-4 text-navy-300" />
               </CardHeader>
               <CardBody className="space-y-3">
@@ -388,17 +393,11 @@ export function IncidentDetailPage() {
                       <FaultTypeBadge faultType={incident.complaintAnalysis.muhtemel_alan} />
                     </div>
                     <p className="mt-1.5 text-xs leading-relaxed text-navy-700">{incident.complaintAnalysis.olasi_neden}</p>
-                    {role === "MUSTERI" ? (
-                      // Musteriye teknik ekip talimati degil, sadece guven verici bir ozet gosterilir —
-                      // "oneri" alani (saha/NOC'a yonelik somut aksiyon) sadece cozen ekip rollerine gorunur.
-                      <p className="mt-1 text-xs leading-relaxed text-navy-600">
-                        Ekibimiz bu ön analizi kullanarak sorununuzu en kısa sürede çözecek.
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs leading-relaxed text-navy-600">
-                        <span className="font-semibold">Öneri:</span> {incident.complaintAnalysis.oneri}
-                      </p>
-                    )}
+                    {/* Bu kart artik sadece musteriye gorunuyor (yukarida bkz.) — saha/NOC'a
+                        yonelik teknik "oneri" yerine musteriye guven verici bir ozet gosterilir. */}
+                    <p className="mt-1 text-xs leading-relaxed text-navy-600">
+                      Ekibimiz bu ön analizi kullanarak sorununuzu en kısa sürede çözecek.
+                    </p>
                   </div>
                 )}
               </CardBody>
@@ -449,6 +448,11 @@ function LocalAiPanel({ incident }: { incident: Incident }) {
         <Button variant="secondary" size="sm" loading={mutation.isPending} onClick={() => mutation.mutate()}>
           Yerel AI ile Analiz Et
         </Button>
+        {mutation.isPending && (
+          <p className="text-[11px] text-navy-400">
+            Model GPU olmadan çalışıyor, yanıt birkaç dakika sürebilir — lütfen bekleyin.
+          </p>
+        )}
         {result && (
           <div className="space-y-1.5 rounded-xl border border-navy-200 bg-surface-subtle p-3.5">
             <div className="flex items-center justify-between gap-2">

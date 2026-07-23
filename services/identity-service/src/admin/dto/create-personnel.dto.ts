@@ -1,8 +1,6 @@
 import { ArrayNotEmpty, IsArray, IsEmail, IsEnum, IsOptional, IsString, Matches, MinLength } from "class-validator";
 import { Role } from "../../common/enums/role.enum";
 
-const PASSWORD_POLICY_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
-
 export class CreatePersonnelDto {
   @IsString()
   @MinLength(2)
@@ -15,9 +13,11 @@ export class CreatePersonnelDto {
   @IsEmail({}, { message: "Gecerli bir e-posta adresi giriniz." })
   email: string;
 
-  @Matches(PASSWORD_POLICY_REGEX, {
-    message: "Sifre en az 8 karakter, 1 buyuk harf, 1 rakam ve 1 ozel karakter icermelidir.",
-  })
+  @IsString()
+  @MinLength(8, { message: "Şifre en az 8 karakter olmalıdır." })
+  @Matches(/[A-Z]/, { message: "Şifre en az 1 büyük harf içermelidir (A-Z)." })
+  @Matches(/\d/, { message: "Şifre en az 1 rakam içermelidir (0-9)." })
+  @Matches(/[^A-Za-z0-9]/, { message: "Şifre en az 1 özel karakter içermelidir." })
   password: string;
 
   @IsEnum(Role, { message: "Gecerli bir personel rolu seciniz." })

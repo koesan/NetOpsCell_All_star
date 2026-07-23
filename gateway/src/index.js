@@ -109,6 +109,10 @@ const proxyOptions = (target, prefix, timeoutMs = 5000) => ({
   changeOrigin: true,
   proxyTimeout: timeoutMs,
   timeout: timeoutMs,
+  // xfwd: gercek istemci IP'sini X-Forwarded-For/-Port/-Proto olarak downstream servise iletir.
+  // Bunsuz her servisin gordugu req.ip her zaman Gateway container'inin Docker-ici IP'siydi -
+  // audit log'daki "nereden (IP)" alani hicbir zaman gercek saldirgan/istemci IP'si olmuyordu.
+  xfwd: true,
   pathRewrite: (path) => (path === "/" ? prefix : `${prefix}${path}`),
   on: {
     proxyReq: (proxyReq, req) => {
@@ -135,7 +139,10 @@ app.use("/api/v1/ai", createProxyMiddleware(proxyOptions(AI_SERVICE_URL, "/api/v
 app.use("/api/v1/game", createProxyMiddleware(proxyOptions(GAMIFICATION_SERVICE_URL, "/api/v1/game")));
 // Yerel LLM cikarimi CPU'da uzun surebilir (ilk yuklemede birkaç dakika, ureti minde
 // onlarca saniye) - varsayilan 5sn proxy zaman asimi burada yetersiz kalir.
-app.use("/api/v1/local-ai", createProxyMiddleware(proxyOptions(LOCAL_AI_SERVICE_URL, "/api/v1/local-ai", 120000)));
+// CPU uzerinde calisan 1.5B parametreli model gercek bir istekte ~2-4 dakika surebilir
+// (GPU yok); 120sn'lik onceki timeout gercek yanitlar tamamlanmadan "Hedef servise
+// ulasilamiyor" hatasi uretiyordu. 300sn'ye cikarildi.
+app.use("/api/v1/local-ai", createProxyMiddleware(proxyOptions(LOCAL_AI_SERVICE_URL, "/api/v1/local-ai", 300000)));
 
 app.use((_req, res) => {
   res.status(404).json({ success: false, data: null, error: { code: "NOT_FOUND", message: "Route bulunamadi." } });

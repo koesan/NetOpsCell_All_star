@@ -19,6 +19,7 @@ export function IncidentsListPage({
   basePath,
   showMap = false,
   showTeamsOnMap = true,
+  action,
 }: {
   title: string;
   description?: string;
@@ -26,6 +27,7 @@ export function IncidentsListPage({
   /** Liste ustunde canli operasyon haritasi (istasyonlar + ekipler + rotalar + arac akisi). */
   showMap?: boolean;
   showTeamsOnMap?: boolean;
+  action?: React.ReactNode;
 }) {
   const { data: incidents, isLoading, isError, refetch } = useIncidents();
   const { data: stations } = useStations();
@@ -34,7 +36,7 @@ export function IncidentsListPage({
 
   return (
     <div>
-      <PageHeader title={title} description={description} />
+      <PageHeader title={title} description={description} action={action} />
 
       {showMap && showTeamsOnMap && teamsUnavailable && (
         <ServiceNotice message="AI Service şu an erişilemiyor: ekip konumları ve otomatik atama geçici olarak devre dışı. Vakalar BELIRSIZ/ORTA olarak açılmaya devam eder ve manuel atama kuyruğuna düşer — sistemin geri kalanı tam çalışır durumda." />

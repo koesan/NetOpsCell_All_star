@@ -160,42 +160,64 @@ class TelecomFaultLLMEngine:
         self._model = None
         self._adapter_loaded = False
         self._model_source = None
+        self._load_error = None
 
     def load(self):
         with self._lock:
             if self._model is not None:
                 return
-            source = MODEL_DIR if os.path.exists(MODEL_DIR) and os.listdir(MODEL_DIR) else FALLBACK_MODEL_ID
-            logger.info("Yerel model yukleniyor: %s", source)
+            is_local = os.path.exists(MODEL_DIR) and bool(os.listdir(MODEL_DIR))
+            if not is_local:
+                self._load_error = f"Yerel model klasoru ({MODEL_DIR}) bulunamadi veya bos. Lutfen once modeli indirin."
+                logger.error("%s Internet uzerinden otomatik indirme yapilmayacak.", self._load_error)
+                return
+
+            source = MODEL_DIR
+            logger.info("Yerel model yukleniyor: %s (local_files_only=True)", source)
             self._model_source = source
 
-            tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True)
-            if tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(
+                    source, trust_remote_code=True, local_files_only=True
+                )
+                if tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
 
-            device_map = "auto" if torch.cuda.is_available() else "cpu"
-            torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-            model = AutoModelForCausalLM.from_pretrained(
-                source, torch_dtype=torch_dtype, device_map=device_map, trust_remote_code=True
-            )
+                device_map = "auto" if torch.cuda.is_available() else "cpu"
+                torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+                model = AutoModelForCausalLM.from_pretrained(
+                    source,
+                    torch_dtype=torch_dtype,
+                    device_map=device_map,
+                    trust_remote_code=True,
+                    local_files_only=True,
+                )
 
-            if os.path.exists(ADAPTER_DIR) and os.listdir(ADAPTER_DIR):
-                try:
-                    from peft import PeftModel
+                if os.path.exists(ADAPTER_DIR) and os.listdir(ADAPTER_DIR):
+                    try:
+                        from peft import PeftModel
 
-                    model = PeftModel.from_pretrained(model, ADAPTER_DIR)
-                    self._adapter_loaded = True
-                    logger.info("Ince ayarli LoRA adaptoru yuklendi: %s", ADAPTER_DIR)
-                except Exception as exc:  # noqa: BLE001 - adaptor yuklenemezse taban model + few-shot ile devam
-                    logger.warning("LoRA adaptoru yuklenemedi (%s), taban model few-shot ile devam ediliyor.", exc)
+                        model = PeftModel.from_pretrained(model, ADAPTER_DIR, local_files_only=True)
+                        self._adapter_loaded = True
+                        logger.info("Ince ayarli LoRA adaptoru yuklendi: %s", ADAPTER_DIR)
+                    except Exception as exc:  # noqa: BLE001 - adaptor yuklenemezse taban model + few-shot ile devam
+                        logger.warning("LoRA adaptoru yuklenemedi (%s), taban model few-shot ile devam ediliyor.", exc)
 
-            self._tokenizer = tokenizer
-            self._model = model
-            logger.info("Yerel model hazir (adaptor=%s).", self._adapter_loaded)
+                self._tokenizer = tokenizer
+                self._model = model
+                self._load_error = None
+                logger.info("Yerel model hazir (adaptor=%s).", self._adapter_loaded)
+            except Exception as exc:
+                self._load_error = f"Yerel model yuklenirken hata olustu: {exc}"
+                logger.error(self._load_error)
 
     @property
     def ready(self) -> bool:
         return self._model is not None
+
+    @property
+    def load_error(self) -> str | None:
+        return self._load_error
 
     @property
     def model_source(self) -> str | None:
