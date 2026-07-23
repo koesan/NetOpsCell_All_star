@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { PlusCircle, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/Button";
@@ -17,9 +18,9 @@ export function NocManualTelemetryModal({ isOpen, onClose, onSuccess }: NocManua
   const [stationCode, setStationCode] = useState("");
   const [latitude, setLatitude] = useState("41.0082");
   const [longitude, setLongitude] = useState("28.9784");
-  const [temperature, setTemperature] = useState<number>(85.0);
-  const [signalStrength, setSignalStrength] = useState<number>(-95);
-  const [packetLoss, setPacketLoss] = useState<number>(35.0);
+  const [temperature, setTemperature] = useState("85.0");
+  const [signalStrength, setSignalStrength] = useState("-95");
+  const [packetLoss, setPacketLoss] = useState("35.0");
   const [powerStatus, setPowerStatus] = useState("OUTAGE");
   const [description, setDescription] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,19 +47,27 @@ export function NocManualTelemetryModal({ isOpen, onClose, onSuccess }: NocManua
         }
       }
 
-      await api.post("/api/v1/telemetry", {
+      const response = await api.post("/api/v1/telemetry", {
         stationCode,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        temperature,
-        signalStrength,
-        packetLoss,
+        latitude: parseFloat(latitude) || 41.0082,
+        longitude: parseFloat(longitude) || 28.9784,
+        temperature: parseFloat(temperature) || 0,
+        signalStrength: parseInt(signalStrength, 10) || 0,
+        packetLoss: parseFloat(packetLoss) || 0,
         powerStatus,
         description: description.trim() || undefined,
         complaintAnalysis,
       });
 
-      toast.success("Telemetri / arıza kaydı başarıyla oluşturuldu.");
+      const resData = response.data?.data;
+      if (resData?.incident) {
+        toast.success(`Vaka ve telemetri kaydı başarıyla oluşturuldu (${resData.incident.incidentNo})`);
+      } else if (resData?.message) {
+        toast.info(resData.message);
+      } else {
+        toast.success("Telemetri / arıza kaydı başarıyla oluşturuldu.");
+      }
+
       onSuccess();
       onClose();
     } catch (err) {
@@ -68,8 +77,8 @@ export function NocManualTelemetryModal({ isOpen, onClose, onSuccess }: NocManua
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/50 backdrop-blur-sm p-4 animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-navy-950/60 backdrop-blur-md p-4 animate-fade-in">
       <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-navy-100 space-y-4">
         <div className="flex items-center justify-between border-b border-navy-100 pb-3">
           <div className="flex items-center gap-2">
@@ -144,14 +153,14 @@ export function NocManualTelemetryModal({ isOpen, onClose, onSuccess }: NocManua
               type="number"
               step="0.1"
               value={temperature}
-              onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              onChange={(e) => setTemperature(e.target.value)}
               required
             />
             <Input
               label="Sinyal (dBm)"
               type="number"
               value={signalStrength}
-              onChange={(e) => setSignalStrength(parseInt(e.target.value, 10))}
+              onChange={(e) => setSignalStrength(e.target.value)}
               required
             />
             <Input
@@ -159,7 +168,7 @@ export function NocManualTelemetryModal({ isOpen, onClose, onSuccess }: NocManua
               type="number"
               step="0.1"
               value={packetLoss}
-              onChange={(e) => setPacketLoss(parseFloat(e.target.value))}
+              onChange={(e) => setPacketLoss(e.target.value)}
               required
             />
           </div>
@@ -184,6 +193,7 @@ export function NocManualTelemetryModal({ isOpen, onClose, onSuccess }: NocManua
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

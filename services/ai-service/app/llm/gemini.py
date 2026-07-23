@@ -2,7 +2,7 @@
 
 Musteri ariza bildirirken yazdigi serbest metin (orn. "evde internet surekli kopuyor,
 televizyon donuyor") dusuk maliyetli bir Gemini modeline (varsayilan:
-gemini-2.5-flash-lite) gonderilir; model muhtemel ariza alanini, olasi nedeni ve
+gemini-2.5-flash) gonderilir; model muhtemel ariza alanini, olasi nedeni ve
 musteriye/operatore yonelik oneriyi YAPILANDIRILMIS JSON olarak doner. Cikti,
 telemetri tabanli ML siniflandiricisinin YERINE GECMEZ — musteri deneyimini
 zenginlestiren ve NOC'a baglam veren bir on analizdir.

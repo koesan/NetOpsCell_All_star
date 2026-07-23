@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader, CardTitle } from "../../components/ui/Card"
 import { LoadingState } from "../../components/ui/States";
 import { cn } from "../../lib/cn";
 import { useBadgeCatalog, useLeaderboard, useMyProfile } from "../shared/gamificationHooks";
+import { useTeams } from "../shared/incidentHooks";
 import { LEVEL_COLORS, LEVEL_LABELS, levelProgress } from "./levelUtils";
 
 export function ProfilePage() {
@@ -16,6 +17,8 @@ export function ProfilePage() {
   // Case 6.4: profil ekraninda hem gunluk hem haftalik siralama gosterilmelidir
   const { data: dailyLeaderboard } = useLeaderboard("daily");
   const { data: weeklyLeaderboard } = useLeaderboard("weekly");
+  const { data: teams } = useTeams();
+  const nameByUserId = new Map(teams?.map((t) => [t.team_id, t.name]));
   const [period, setPeriod] = useState<"daily" | "weekly">("daily");
 
   if (isLoading || !profile) return <LoadingState label="Profil yükleniyor..." />;
@@ -112,7 +115,7 @@ export function ProfilePage() {
               >
                 <span className="flex items-center gap-2 text-navy-700">
                   <span className="w-5 text-center text-xs text-navy-400">#{entry.rank}</span>
-                  {entry.userId === user?.id ? "Sen" : entry.userId.slice(0, 8)}
+                  {entry.userId === user?.id ? "Sen" : nameByUserId.get(entry.userId) ?? entry.userId.slice(0, 8)}
                 </span>
                 <span className="text-navy-900">{entry.points} p</span>
               </div>

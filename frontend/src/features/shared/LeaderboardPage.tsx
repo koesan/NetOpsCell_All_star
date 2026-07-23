@@ -6,12 +6,15 @@ import { Card } from "../../components/ui/Card";
 import { EmptyState, LoadingState } from "../../components/ui/States";
 import { cn } from "../../lib/cn";
 import { useLeaderboard } from "./gamificationHooks";
+import { useTeams } from "./incidentHooks";
 
 const MEDAL_COLORS = ["#F5A623", "#9CA3AF", "#B08D57"];
 
 export function LeaderboardPage() {
   const [period, setPeriod] = useState<"daily" | "weekly">("daily");
   const { data: leaderboard, isLoading } = useLeaderboard(period);
+  const { data: teams } = useTeams();
+  const nameByUserId = new Map(teams?.map((t) => [t.team_id, t.name]));
 
   return (
     <div>
@@ -59,9 +62,11 @@ export function LeaderboardPage() {
                   )}
                 </div>
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-100 text-xs font-semibold text-navy-700">
-                  {entry.userId.slice(0, 2).toUpperCase()}
+                  {(nameByUserId.get(entry.userId) ?? entry.userId).slice(0, 2).toUpperCase()}
                 </div>
-                <p className="flex-1 font-mono text-sm text-navy-700">{entry.userId}</p>
+                <p className="flex-1 text-sm font-medium text-navy-700">
+                  {nameByUserId.get(entry.userId) ?? `Kullanıcı ${entry.userId.slice(0, 8)}`}
+                </p>
                 <p className="text-sm font-semibold text-navy-950">{entry.points} puan</p>
               </motion.div>
             ))}

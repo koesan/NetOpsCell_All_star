@@ -27,6 +27,10 @@ export function NocIncidentsPage() {
         onClose={() => setIsModalOpen(false)}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ["incidents"] });
+          queryClient.invalidateQueries({ queryKey: ["dashboard-incidents"] });
+          queryClient.invalidateQueries({ queryKey: ["stations"] });
+          queryClient.invalidateQueries({ queryKey: ["ai-teams"] });
+          queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
         }}
       />
     </>

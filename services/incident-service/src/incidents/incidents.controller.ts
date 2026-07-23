@@ -19,7 +19,7 @@ const PERSONEL_VE_SUPERVIZOR = [Role.SAHA_TEKNISYENI, Role.NOC_OPERATORU, Role.S
 export class IncidentsController {
   constructor(private readonly incidentsService: IncidentsService) {}
 
-  @Roles(Role.MUSTERI, Role.NOC_OPERATORU, Role.SUPERVIZOR, Role.ADMIN)
+  @Roles(Role.MUSTERI, Role.SAHA_TEKNISYENI, Role.NOC_OPERATORU, Role.SUPERVIZOR, Role.ADMIN)
   @Post("telemetry")
   createTelemetry(@Body() dto: CreateTelemetryDto, @CurrentUser() user: AccessTokenPayload) {
     return this.incidentsService.createTelemetry(dto, user.sub);

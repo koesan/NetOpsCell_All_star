@@ -21,7 +21,7 @@ class Settings:
 
     # Gemini LLM — musteri sikayet metni on analizi (opsiyonel; anahtar yoksa ozellik kapali)
     gemini_api_key = read_secret("GEMINI_API_KEY", "")
-    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     min_acceptable_macro_f1 = float(os.environ.get("MIN_ACCEPTABLE_MACRO_F1", "0.85"))
 
     threshold_izle = float(os.environ.get("THRESHOLD_IZLE", "0.40"))
